@@ -5,6 +5,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
     <style>
         .gpu-card {
             margin-bottom: 15px;
@@ -25,6 +28,17 @@
             border-radius: 5px;
             max-height: 300px;
             overflow-y: auto;
+        }
+        .metrics-chart {
+            height: 250px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            position: relative;
+            margin-top: 20px;
+        }
+        .time-range-selector {
+            margin-bottom: 15px;
         }
     </style>
 </head>
@@ -82,6 +96,54 @@
                                                     {{ gpu.util }}%
                                                 </div>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-warning">
+                                No GPU metrics available for this worker.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Metrics Timeline Section -->
+                <div class="card mt-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">Metrics Timeline</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="time-range-selector">
+                            <label class="form-label">Time Range:</label>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="1">1 Hour</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="6">6 Hours</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm time-range active" data-hours="24">24 Hours</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="72">3 Days</button>
+                            </div>
+                        </div>
+
+                        {% if metrics and metrics.gpus %}
+                            {% for gpu in metrics.gpus %}
+                                <div class="card gpu-card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">GPU {{ loop.index }} Timeline</h5>
+                                        
+                                        <div class="chart-container">
+                                            <canvas id="tempChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        </div>
+                                        
+                                        <div class="chart-container">
+                                            <canvas id="utilChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        </div>
+                                        
+                                        <div class="chart-container">
+                                            <canvas id="memChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        </div>
+                                        
+                                        <div class="chart-container">
+                                            <canvas id="powerChart{{ loop.index0 }}" class="metrics-chart"></canvas>
                                         </div>
                                     </div>
                                 </div>
@@ -205,10 +267,166 @@
         // Initial update
         updateCommandOutput();
         
-        // Refresh the page every 30 seconds to get new commands
-        setTimeout(function() {
-            location.reload();
-        }, 30000);
+        // Charts for GPU metrics
+        {% if metrics and metrics.gpus %}
+            {% for gpu in metrics.gpus %}
+                // Initialize charts for GPU {{ loop.index0 }}
+                let tempChart{{ loop.index0 }};
+                let utilChart{{ loop.index0 }};
+                let memChart{{ loop.index0 }};
+                let powerChart{{ loop.index0 }};
+                
+                // Load initial data with 24 hours range
+                loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, 24);
+            {% endfor %}
+            
+            // Time range selector event listeners
+            document.querySelectorAll('.time-range').forEach(button => {
+                button.addEventListener('click', function() {
+                    // Update active button
+                    document.querySelectorAll('.time-range').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Get selected hours
+                    const hours = parseInt(this.getAttribute('data-hours'));
+                    
+                    // Reload data for all GPUs
+                    {% for gpu in metrics.gpus %}
+                        loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                    {% endfor %}
+                });
+            });
+        {% endif %}
+        
+        // Function to load metrics data from API
+        function loadMetricsData(workerId, gpuIndex, hours) {
+            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}`)
+                .then(response => response.json())
+                .then(data => {
+                    updateCharts(data, gpuIndex);
+                })
+                .catch(error => console.error(`Error loading metrics data for GPU ${gpuIndex}:`, error));
+        }
+        
+        // Function to update charts with new data
+        function updateCharts(data, gpuIndex) {
+            const timestamps = data.timestamps.map(ts => new Date(ts));
+            
+            // Temperature chart
+            updateChart(
+                `tempChart${gpuIndex}`,
+                timestamps,
+                data.temperature,
+                'Temperature (°C)',
+                'rgba(255, 99, 132, 0.5)',
+                'rgba(255, 99, 132, 1)'
+            );
+            
+            // Utilization chart
+            updateChart(
+                `utilChart${gpuIndex}`,
+                timestamps,
+                data.utilization,
+                'GPU Utilization (%)',
+                'rgba(54, 162, 235, 0.5)',
+                'rgba(54, 162, 235, 1)'
+            );
+            
+            // Memory utilization chart
+            updateChart(
+                `memChart${gpuIndex}`,
+                timestamps,
+                data.memory_utilization,
+                'Memory Utilization (%)',
+                'rgba(75, 192, 192, 0.5)',
+                'rgba(75, 192, 192, 1)'
+            );
+            
+            // Power usage chart
+            updateChart(
+                `powerChart${gpuIndex}`,
+                timestamps,
+                data.power_usage,
+                'Power Usage (W)',
+                'rgba(153, 102, 255, 0.5)',
+                'rgba(153, 102, 255, 1)'
+            );
+        }
+        
+        // Helper function to create or update a chart
+        function updateChart(chartId, labels, data, label, backgroundColor, borderColor) {
+            const ctx = document.getElementById(chartId);
+            
+            // Destroy existing chart if it exists
+            if (window[chartId]) {
+                window[chartId].destroy();
+            }
+            
+            // Create new chart
+            window[chartId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        backgroundColor: backgroundColor,
+                        borderColor: borderColor,
+                        borderWidth: 1,
+                        tension: 0.1,
+                        pointRadius: 0.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM d, HH:mm'
+                                },
+                                tooltipFormat: 'MMM d, HH:mm:ss'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: label
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: label
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Don't refresh the page automatically if we're viewing metrics
+        // Instead, update metrics data every 60 seconds
+        const metricsUpdateInterval = setInterval(function() {
+            {% if metrics and metrics.gpus %}
+                {% for gpu in metrics.gpus %}
+                    // Get current time range
+                    const activeButton = document.querySelector('.time-range.active');
+                    const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
+                    
+                    // Reload data
+                    loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                {% endfor %}
+            {% endif %}
+        }, 60000); // Update every minute
     </script>
 </body>
 </html>

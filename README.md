@@ -32,7 +32,11 @@ A master-worker system for monitoring GPU metrics across multiple Ubuntu machine
    ```
    pip install -r requirements.txt
    ```
-3. Run the master server:
+3. Create the database tables:
+   ```
+   python migrate_db.py
+   ```
+4. Run the master server:
    ```
    python master.py
    ```
@@ -134,6 +138,7 @@ sudo systemctl start gpu-worker.service
 
 - **Dashboard**: Access the main dashboard at `http://<master-ip>:5000` to see all connected workers, their status, and GPU count.
 - **Worker Details**: Click on a worker's ID to view detailed GPU metrics including temperature and utilization.
+- **GPU Metrics Timeline**: View historical GPU metrics (temperature, utilization, memory usage, and power consumption) over time with customizable time ranges (1 hour, 6 hours, 24 hours, or 3 days).
 - **Running Commands on Individual Workers**: Enter a command in the input field next to a worker and click "Run".
 - **Running Commands on Multiple Workers**: Use the checkboxes to select multiple workers, then use the command panel at the bottom of the page to run a command on all selected workers simultaneously.
 

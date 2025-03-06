@@ -99,10 +99,19 @@ class GPUWorker:
                 mem_used = memory.used / 1024 / 1024
                 mem_free = memory.free / 1024 / 1024
                 
+                # Get power usage if available
+                power_usage = None
+                try:
+                    power_usage = nvmlDeviceGetPowerUsage(handle) / 1000.0  # Convert from milliwatts to watts
+                except Exception as e:
+                    # Power usage might not be available on all GPUs
+                    print(f"Could not get power usage for GPU {i}: {e}")
+                
                 gpu_info = {
                     "model": name,
                     "temp": temp,
                     "util": util,
+                    "power_usage": round(power_usage, 2) if power_usage is not None else None,
                     "memory": {
                         "total": round(mem_total, 2),
                         "used": round(mem_used, 2),
@@ -123,7 +132,7 @@ class GPUWorker:
         
         try:
             # Run nvidia-smi to get GPU info
-            cmd = "nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free --format=csv,noheader,nounits"
+            cmd = "nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free,power.draw --format=csv,noheader,nounits"
             output = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
             
             for i, line in enumerate(output.split('\n')):
@@ -131,8 +140,8 @@ class GPUWorker:
                     continue
                 
                 parts = [part.strip() for part in line.split(',')]
-                if len(parts) >= 6:
-                    model, temp, util, mem_total, mem_used, mem_free = parts[:6]
+                if len(parts) >= 7:  # Now we have 7 parts including power
+                    model, temp, util, mem_total, mem_used, mem_free, power_draw = parts[:7]
                     
                     # Convert string values to appropriate types
                     try:
@@ -142,10 +151,16 @@ class GPUWorker:
                         mem_used = float(mem_used)
                         mem_free = float(mem_free)
                         
+                        # Handle power usage (might be N/A on some GPUs)
+                        power_usage = None
+                        if power_draw.lower() != 'n/a':
+                            power_usage = float(power_draw)
+                        
                         gpu_info = {
                             "model": model,
                             "temp": temp,
                             "util": util,
+                            "power_usage": power_usage,
                             "memory": {
                                 "total": mem_total,
                                 "used": mem_used,

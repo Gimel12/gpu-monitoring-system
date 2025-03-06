@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, redirect
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 import secrets
 import json
 import os
@@ -37,6 +37,27 @@ class Command(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     worker = db.relationship('Worker', backref=db.backref('commands', lazy=True))
+
+# GPU Metrics History model
+class GPUMetricsHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    worker_id = db.Column(db.Integer, db.ForeignKey('worker.id'), nullable=False)
+    gpu_index = db.Column(db.Integer, nullable=False)  # Index of the GPU in the worker's system
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    temperature = db.Column(db.Float)  # GPU temperature in Celsius
+    utilization = db.Column(db.Float)  # GPU utilization percentage
+    memory_used = db.Column(db.Float)  # Memory used in MB
+    memory_total = db.Column(db.Float)  # Total memory in MB
+    power_usage = db.Column(db.Float, nullable=True)  # Power usage in Watts (if available)
+    
+    worker = db.relationship('Worker', backref=db.backref('metrics_history', lazy=True))
+    
+    @property
+    def memory_utilization(self):
+        """Calculate memory utilization percentage"""
+        if self.memory_total > 0:
+            return (self.memory_used / self.memory_total) * 100
+        return 0
 
 # Generate a unique token
 def generate_token():
@@ -77,6 +98,26 @@ def receive_metrics():
     # Update worker metrics
     worker.metrics = json.dumps(data['metrics'])
     worker.last_seen = datetime.utcnow()
+    
+    # Store historical metrics data
+    current_time = datetime.utcnow()
+    metrics = data['metrics']
+    
+    if 'gpus' in metrics:
+        for gpu_index, gpu_data in enumerate(metrics['gpus']):
+            # Create a new metrics history record
+            metrics_history = GPUMetricsHistory(
+                worker_id=worker.id,
+                gpu_index=gpu_index,
+                timestamp=current_time,
+                temperature=gpu_data.get('temp'),
+                utilization=gpu_data.get('util'),
+                memory_used=gpu_data.get('memory', {}).get('used', 0),
+                memory_total=gpu_data.get('memory', {}).get('total', 0),
+                power_usage=gpu_data.get('power_usage') # This might be None if not available
+            )
+            db.session.add(metrics_history)
+    
     db.session.commit()
     return jsonify({"status": "success"})
 
@@ -128,6 +169,41 @@ def index():
     workers = Worker.query.all()
     now = datetime.utcnow()
     return render_template('index.html', workers=workers, now=now)
+
+# API endpoint to get historical metrics data for a specific worker and GPU
+@app.route('/api/metrics/history/<worker_id>/<int:gpu_index>')
+def get_metrics_history(worker_id, gpu_index):
+    # Get time range from query parameters (default to last 24 hours)
+    hours = request.args.get('hours', 24, type=int)
+    start_time = datetime.utcnow() - timedelta(hours=hours)
+    
+    # Get the worker
+    worker = Worker.query.filter_by(worker_id=worker_id).first_or_404()
+    
+    # Query for metrics history
+    metrics = GPUMetricsHistory.query.filter(
+        GPUMetricsHistory.worker_id == worker.id,
+        GPUMetricsHistory.gpu_index == gpu_index,
+        GPUMetricsHistory.timestamp >= start_time
+    ).order_by(GPUMetricsHistory.timestamp).all()
+    
+    # Format the data for charts
+    result = {
+        'timestamps': [],
+        'temperature': [],
+        'utilization': [],
+        'memory_utilization': [],
+        'power_usage': []
+    }
+    
+    for metric in metrics:
+        result['timestamps'].append(metric.timestamp.isoformat())
+        result['temperature'].append(metric.temperature)
+        result['utilization'].append(metric.utilization)
+        result['memory_utilization'].append(metric.memory_utilization)
+        result['power_usage'].append(metric.power_usage)
+    
+    return jsonify(result)
 
 @app.route('/worker/<worker_id>')
 def worker_details(worker_id):
