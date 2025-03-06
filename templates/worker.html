@@ -485,8 +485,42 @@
             }
         }
         
-        // Don't refresh the page automatically if we're viewing metrics
-        // Instead, update metrics data every 60 seconds
+        // Initialize charts when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing charts...');
+            {% if metrics and metrics.gpus %}
+                {% for gpu in metrics.gpus %}
+                    // Get current time range (default to 24 hours)
+                    const activeButton = document.querySelector('.time-range.active');
+                    const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
+                    
+                    // Initial load of metrics data
+                    console.log('Loading initial metrics for GPU {{ loop.index0 }}');
+                    loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                {% endfor %}
+            {% endif %}
+            
+            // Set up time range button click handlers
+            document.querySelectorAll('.time-range').forEach(button => {
+                button.addEventListener('click', function() {
+                    // Update active button
+                    document.querySelectorAll('.time-range').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Get new time range
+                    const hours = parseInt(this.getAttribute('data-hours'));
+                    
+                    // Reload data for all GPUs with new time range
+                    {% if metrics and metrics.gpus %}
+                        {% for gpu in metrics.gpus %}
+                            loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                        {% endfor %}
+                    {% endif %}
+                });
+            });
+        });
+        
+        // Update metrics data every 60 seconds
         const metricsUpdateInterval = setInterval(function() {
             {% if metrics and metrics.gpus %}
                 {% for gpu in metrics.gpus %}

@@ -179,10 +179,15 @@ def get_metrics_history(worker_id, gpu_index):
     start_time = datetime.utcnow() - timedelta(hours=hours)
     
     print(f"Fetching metrics history for worker_id={worker_id}, gpu_index={gpu_index}, hours={hours}")
+    print(f"Start time: {start_time.isoformat()}")
     
     # Get the worker
     worker = Worker.query.filter_by(worker_id=worker_id).first_or_404()
     print(f"Found worker with ID {worker.id}")
+    
+    # Check if any metrics exist for this worker
+    total_metrics = GPUMetricsHistory.query.filter_by(worker_id=worker.id).count()
+    print(f"Total metrics for worker {worker.id}: {total_metrics}")
     
     # Query for metrics history
     metrics = GPUMetricsHistory.query.filter(
@@ -192,6 +197,17 @@ def get_metrics_history(worker_id, gpu_index):
     ).order_by(GPUMetricsHistory.timestamp).all()
     
     print(f"Found {len(metrics)} metrics records for the specified time range")
+    
+    # If no metrics found, try to get at least some data by ignoring the time filter
+    if len(metrics) == 0:
+        print("No metrics found with time filter, trying to get the most recent 50 records")
+        metrics = GPUMetricsHistory.query.filter(
+            GPUMetricsHistory.worker_id == worker.id,
+            GPUMetricsHistory.gpu_index == gpu_index
+        ).order_by(GPUMetricsHistory.timestamp.desc()).limit(50).all()
+        # Reverse to get chronological order
+        metrics.reverse()
+        print(f"Found {len(metrics)} metrics records without time filter")
     
     # Format the data for charts
     result = {
@@ -207,10 +223,14 @@ def get_metrics_history(worker_id, gpu_index):
         result['temperature'].append(metric.temperature)
         result['utilization'].append(metric.utilization)
         result['memory_utilization'].append(metric.memory_utilization)
-        result['power_usage'].append(metric.power_usage)
+        result['power_usage'].append(metric.power_usage if metric.power_usage is not None else 0)
     
     # Add debug output
     print(f"Returning {len(result['timestamps'])} data points")
+    if len(result['timestamps']) > 0:
+        print(f"First timestamp: {result['timestamps'][0]}")
+        print(f"Last timestamp: {result['timestamps'][-1]}")
+        print(f"Sample data point - Temperature: {result['temperature'][0]}, Utilization: {result['utilization'][0]}")
     
     return jsonify(result)
 
