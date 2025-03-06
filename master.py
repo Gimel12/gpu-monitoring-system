@@ -189,6 +189,38 @@ def get_command_output(command_id):
         'updated_at': command.updated_at.isoformat()
     })
 
+# Delete a worker
+@app.route('/delete_worker/<worker_id>', methods=['POST'])
+def delete_worker(worker_id):
+    worker = Worker.query.filter_by(worker_id=worker_id).first_or_404()
+    
+    # Delete all commands associated with this worker
+    Command.query.filter_by(worker_id=worker.id).delete()
+    
+    # Delete the worker
+    db.session.delete(worker)
+    db.session.commit()
+    
+    return redirect('/')
+
+# Delete multiple workers
+@app.route('/delete_workers', methods=['POST'])
+def delete_workers():
+    worker_ids = request.form.getlist('worker_ids')
+    
+    if worker_ids:
+        for worker_id in worker_ids:
+            worker = Worker.query.filter_by(worker_id=worker_id).first()
+            if worker:
+                # Delete all commands associated with this worker
+                Command.query.filter_by(worker_id=worker.id).delete()
+                # Delete the worker
+                db.session.delete(worker)
+        
+        db.session.commit()
+    
+    return redirect('/')
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()  # Create database tables

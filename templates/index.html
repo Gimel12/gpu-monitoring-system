@@ -116,15 +116,22 @@
                                     </td>
                                     <td>{{ worker.last_seen.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                                     <td>
-                                        <form action="/submit_command" method="post" class="row g-2">
-                                            <input type="hidden" name="worker_id" value="{{ worker.worker_id }}">
-                                            <div class="col-8">
-                                                <input type="text" class="form-control form-control-sm" name="command" placeholder="Enter command">
-                                            </div>
-                                            <div class="col-4">
-                                                <button type="submit" class="btn btn-primary btn-sm">Run</button>
-                                            </div>
-                                        </form>
+                                        <div class="d-flex">
+                                            <form action="/submit_command" method="post" class="row g-2 me-2">
+                                                <input type="hidden" name="worker_id" value="{{ worker.worker_id }}">
+                                                <div class="col-8">
+                                                    <input type="text" class="form-control form-control-sm" name="command" placeholder="Enter command">
+                                                </div>
+                                                <div class="col-4">
+                                                    <button type="submit" class="btn btn-primary btn-sm">Run</button>
+                                                </div>
+                                            </form>
+                                            {% if (now - worker.last_seen).total_seconds() >= 60 %}
+                                            <form action="/delete_worker/{{ worker.worker_id }}" method="post" class="ms-1" onsubmit="return confirm('Are you sure you want to delete this worker?');">
+                                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -144,17 +151,26 @@
     <!-- Multi-worker command footer -->
     <div class="sticky-footer">
         <div class="container">
-            <form action="/submit_multi_command" method="post" id="multiCommandForm">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" name="command" id="multiCommand" placeholder="Enter command to run on selected workers">
-                        <div id="selectedWorkersCount" class="form-text">No workers selected</div>
-                    </div>
-                    <div class="col-md-4">
-                        <button type="submit" class="btn btn-success w-100" id="runMultiCommandBtn" disabled>Run on Selected Workers</button>
-                    </div>
+            <div class="row">
+                <div class="col-md-8">
+                    <form action="/submit_multi_command" method="post" id="multiCommandForm">
+                        <div class="row align-items-center">
+                            <div class="col-md-9">
+                                <input type="text" class="form-control" name="command" id="multiCommand" placeholder="Enter command to run on selected workers">
+                                <div id="selectedWorkersCount" class="form-text">No workers selected</div>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-success w-100" id="runMultiCommandBtn" disabled>Run Command</button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
-            </form>
+                <div class="col-md-4">
+                    <form action="/delete_workers" method="post" id="deleteWorkersForm" onsubmit="return confirm('Are you sure you want to delete the selected workers?');">
+                        <button type="submit" class="btn btn-danger w-100" id="deleteWorkersBtn" disabled>Delete Selected Workers</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -198,6 +214,7 @@
             selectedWorkersCount.textContent = selectedCount === 0 ? 'No workers selected' : 
                                              `${selectedCount} worker${selectedCount > 1 ? 's' : ''} selected`;
             runMultiCommandBtn.disabled = selectedCount === 0;
+            deleteWorkersBtn.disabled = selectedCount === 0;
         }
 
         // Prepare form submission
@@ -216,6 +233,31 @@
                 input.name = 'worker_ids';
                 input.value = workerId;
                 multiCommandForm.appendChild(input);
+            });
+
+            // Reset refresh timeout when submitting the form
+            clearTimeout(refreshTimeout);
+        });
+        
+        // Handle delete workers form
+        const deleteWorkersForm = document.getElementById('deleteWorkersForm');
+        const deleteWorkersBtn = document.getElementById('deleteWorkersBtn');
+        
+        deleteWorkersForm.addEventListener('submit', function(e) {
+            // Clear any existing hidden inputs
+            document.querySelectorAll('input[name="worker_ids"]').forEach(el => el.remove());
+            
+            // Add selected worker IDs as hidden inputs
+            const selectedWorkers = Array.from(workerCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+                
+            selectedWorkers.forEach(workerId => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'worker_ids';
+                input.value = workerId;
+                deleteWorkersForm.appendChild(input);
             });
 
             // Reset refresh timeout when submitting the form
