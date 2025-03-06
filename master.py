@@ -174,65 +174,111 @@ def index():
 # API endpoint to get historical metrics data for a specific worker and GPU
 @app.route('/api/metrics/history/<worker_id>/<int:gpu_index>')
 def get_metrics_history(worker_id, gpu_index):
-    # Get time range from query parameters (default to last 24 hours)
-    hours = request.args.get('hours', 24, type=int)
-    start_time = datetime.utcnow() - timedelta(hours=hours)
-    
-    print(f"Fetching metrics history for worker_id={worker_id}, gpu_index={gpu_index}, hours={hours}")
-    print(f"Start time: {start_time.isoformat()}")
-    
-    # Get the worker
-    worker = Worker.query.filter_by(worker_id=worker_id).first_or_404()
-    print(f"Found worker with ID {worker.id}")
-    
-    # Check if any metrics exist for this worker
-    total_metrics = GPUMetricsHistory.query.filter_by(worker_id=worker.id).count()
-    print(f"Total metrics for worker {worker.id}: {total_metrics}")
-    
-    # Query for metrics history
-    metrics = GPUMetricsHistory.query.filter(
-        GPUMetricsHistory.worker_id == worker.id,
-        GPUMetricsHistory.gpu_index == gpu_index,
-        GPUMetricsHistory.timestamp >= start_time
-    ).order_by(GPUMetricsHistory.timestamp).all()
-    
-    print(f"Found {len(metrics)} metrics records for the specified time range")
-    
-    # If no metrics found, try to get at least some data by ignoring the time filter
-    if len(metrics) == 0:
-        print("No metrics found with time filter, trying to get the most recent 50 records")
+    try:
+        # Get time range from query parameters (default to last 24 hours)
+        hours = request.args.get('hours', 24, type=int)
+        start_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        print(f"\n---------- METRICS API REQUEST ----------")
+        print(f"Fetching metrics history for worker_id={worker_id}, gpu_index={gpu_index}, hours={hours}")
+        print(f"Start time: {start_time.isoformat()}")
+        
+        # Get the worker
+        worker = Worker.query.filter_by(worker_id=worker_id).first()
+        if not worker:
+            print(f"Error: Worker with ID {worker_id} not found")
+            return jsonify({
+                'error': f"Worker with ID {worker_id} not found",
+                'timestamps': [],
+                'temperature': [],
+                'utilization': [],
+                'memory_utilization': [],
+                'power_usage': []
+            }), 404
+            
+        print(f"Found worker with ID {worker.id}")
+        
+        # Check if any metrics exist for this worker
+        total_metrics = GPUMetricsHistory.query.filter_by(worker_id=worker.id).count()
+        print(f"Total metrics for worker {worker.id} in database: {total_metrics}")
+        
+        if total_metrics == 0:
+            print(f"Warning: No metrics found for worker {worker.id} in database")
+            return jsonify({
+                'timestamps': [],
+                'temperature': [],
+                'utilization': [],
+                'memory_utilization': [],
+                'power_usage': []
+            })
+        
+        # Query for metrics history with the specified time range
         metrics = GPUMetricsHistory.query.filter(
             GPUMetricsHistory.worker_id == worker.id,
-            GPUMetricsHistory.gpu_index == gpu_index
-        ).order_by(GPUMetricsHistory.timestamp.desc()).limit(50).all()
-        # Reverse to get chronological order
-        metrics.reverse()
-        print(f"Found {len(metrics)} metrics records without time filter")
-    
-    # Format the data for charts
-    result = {
-        'timestamps': [],
-        'temperature': [],
-        'utilization': [],
-        'memory_utilization': [],
-        'power_usage': []
-    }
-    
-    for metric in metrics:
-        result['timestamps'].append(metric.timestamp.isoformat())
-        result['temperature'].append(metric.temperature)
-        result['utilization'].append(metric.utilization)
-        result['memory_utilization'].append(metric.memory_utilization)
-        result['power_usage'].append(metric.power_usage if metric.power_usage is not None else 0)
-    
-    # Add debug output
-    print(f"Returning {len(result['timestamps'])} data points")
-    if len(result['timestamps']) > 0:
-        print(f"First timestamp: {result['timestamps'][0]}")
-        print(f"Last timestamp: {result['timestamps'][-1]}")
-        print(f"Sample data point - Temperature: {result['temperature'][0]}, Utilization: {result['utilization'][0]}")
-    
-    return jsonify(result)
+            GPUMetricsHistory.gpu_index == gpu_index,
+            GPUMetricsHistory.timestamp >= start_time
+        ).order_by(GPUMetricsHistory.timestamp).all()
+        
+        print(f"Found {len(metrics)} metrics records for the specified time range (past {hours} hours)")
+        
+        # If no metrics found in the time range, try to get some recent data
+        if len(metrics) == 0:
+            print("No metrics found with time filter, trying to get the most recent records")
+            metrics = GPUMetricsHistory.query.filter(
+                GPUMetricsHistory.worker_id == worker.id,
+                GPUMetricsHistory.gpu_index == gpu_index
+            ).order_by(GPUMetricsHistory.timestamp.desc()).limit(100).all()
+            
+            # Reverse to get chronological order
+            metrics.reverse()
+            print(f"Found {len(metrics)} recent metrics records without time filter")
+        
+        # Format the data for charts
+        result = {
+            'timestamps': [],
+            'temperature': [],
+            'utilization': [],
+            'memory_utilization': [],
+            'power_usage': []
+        }
+        
+        # Process metrics data
+        for metric in metrics:
+            # Format timestamp to be ISO format for proper JS date parsing
+            result['timestamps'].append(metric.timestamp.isoformat())
+            
+            # Ensure all values are properly converted to numbers
+            result['temperature'].append(float(metric.temperature) if metric.temperature is not None else 0)
+            result['utilization'].append(float(metric.utilization) if metric.utilization is not None else 0)
+            result['memory_utilization'].append(float(metric.memory_utilization) if metric.memory_utilization is not None else 0)
+            result['power_usage'].append(float(metric.power_usage) if metric.power_usage is not None else 0)
+        
+        # Add debug output
+        print(f"Returning {len(result['timestamps'])} data points")
+        if len(result['timestamps']) > 0:
+            print(f"Time range: {result['timestamps'][0]} to {result['timestamps'][-1]}")
+            print(f"Sample data point - Temperature: {result['temperature'][0]}, "
+                  f"Utilization: {result['utilization'][0]}, "
+                  f"Memory: {result['memory_utilization'][0]}, "
+                  f"Power: {result['power_usage'][0]}")
+        print("----------------------------------------\n")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Error in get_metrics_history: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return empty data with error message
+        return jsonify({
+            'error': str(e),
+            'timestamps': [],
+            'temperature': [],
+            'utilization': [],
+            'memory_utilization': [],
+            'power_usage': []
+        })
 
 @app.route('/worker/<worker_id>')
 def worker_details(worker_id):

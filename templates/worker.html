@@ -301,7 +301,26 @@
         // Function to load metrics data from API
         function loadMetricsData(workerId, gpuIndex, hours) {
             console.log(`Loading metrics data for worker ${workerId}, GPU ${gpuIndex}, hours: ${hours}`);
-            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}`)
+            // Clear any previous error messages
+            document.querySelectorAll(`[id$='Chart${gpuIndex}']`).forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            });
+            
+            // Add loading indicator
+            document.querySelectorAll(`[id$='Chart${gpuIndex}']`).forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#666';
+                ctx.textAlign = 'center';
+                ctx.fillText('Loading metrics data...', canvas.width/2 || 150, canvas.height/2 || 100);
+            });
+            
+            // Use fetch with credentials to ensure cookies are sent
+            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}&_=${new Date().getTime()}`, {
+                credentials: 'same-origin',
+                cache: 'no-cache' // Prevent caching
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -309,12 +328,12 @@
                     return response.json();
                 })
                 .then(data => {
-                    console.log(`Received metrics data:`, data);
+                    console.log(`Received metrics data for GPU ${gpuIndex}:`, data);
                     if (data.timestamps && data.timestamps.length > 0) {
-                        console.log(`Got ${data.timestamps.length} data points`);
+                        console.log(`Got ${data.timestamps.length} data points for GPU ${gpuIndex}`);
                         updateCharts(data, gpuIndex);
                     } else {
-                        console.log(`No data points available yet. Charts will be empty.`);
+                        console.log(`No data points available yet for GPU ${gpuIndex}. Charts will be empty.`);
                         // Still update charts with empty data to initialize them
                         updateCharts({
                             timestamps: [],
@@ -323,6 +342,16 @@
                             memory_utilization: [],
                             power_usage: []
                         }, gpuIndex);
+                        
+                        // Show a message that no data is available
+                        document.querySelectorAll(`[id$='Chart${gpuIndex}']`).forEach(canvas => {
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.font = '14px Arial';
+                            ctx.fillStyle = '#666';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('No data available yet. Data will appear as metrics are collected.', canvas.width/2 || 150, canvas.height/2 || 100);
+                        });
                     }
                 })
                 .catch(error => {
@@ -330,10 +359,11 @@
                     // Display error message in the chart containers
                     document.querySelectorAll(`[id$='Chart${gpuIndex}']`).forEach(canvas => {
                         const ctx = canvas.getContext('2d');
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
                         ctx.font = '14px Arial';
                         ctx.fillStyle = 'red';
                         ctx.textAlign = 'center';
-                        ctx.fillText('Error loading metrics data. Check console for details.', canvas.width/2, canvas.height/2);
+                        ctx.fillText('Error loading metrics data. Check console for details.', canvas.width/2 || 150, canvas.height/2 || 100);
                     });
                 });
         }
@@ -393,118 +423,155 @@
             
             console.log(`Updating chart ${chartId} with ${labels.length} data points`);
             
-            // Destroy existing chart if it exists
+            // If no data, show a message and return
+            if (!labels || labels.length === 0) {
+                console.log(`No data available for chart ${chartId}`);
+                // Destroy existing chart if it exists
+                if (window[chartId]) {
+                    window[chartId].destroy();
+                    window[chartId] = null;
+                }
+                
+                const context = ctx.getContext('2d');
+                context.clearRect(0, 0, ctx.width || ctx.clientWidth, ctx.height || ctx.clientHeight);
+                context.font = '14px Arial';
+                context.fillStyle = '#666';
+                context.textAlign = 'center';
+                context.fillText('No data available yet. Data will appear as metrics are collected.', 
+                                 (ctx.width || ctx.clientWidth) / 2, 
+                                 (ctx.height || ctx.clientHeight) / 2);
+                return;
+            }
+            
+            // Process the data
+            // Make sure all data points are numbers
+            const processedData = data.map(val => typeof val === 'number' ? val : parseFloat(val) || 0);
+            
+            // Create new chart configuration
+            const chartConfig = {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: processedData,
+                        backgroundColor: backgroundColor,
+                        borderColor: borderColor,
+                        borderWidth: 1,
+                        tension: 0.1,
+                        pointRadius: labels.length > 100 ? 0 : 1,  // Hide points if too many data points
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 0  // Disable animation for better performance
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM d, HH:mm',
+                                    minute: 'HH:mm'
+                                },
+                                tooltipFormat: 'MMM d, HH:mm:ss'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            ticks: {
+                                maxTicksLimit: 8,  // Limit the number of ticks for readability
+                                source: 'auto',
+                                autoSkip: true
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: label
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: label,
+                            font: {
+                                size: 16
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let value = context.parsed.y;
+                                    if (label.includes('Temperature')) {
+                                        return `${value.toFixed(1)}°C`;
+                                    } else if (label.includes('Utilization') || label.includes('Memory')) {
+                                        return `${value.toFixed(1)}%`;
+                                    } else if (label.includes('Power')) {
+                                        return `${value.toFixed(1)}W`;
+                                    }
+                                    return value.toFixed(1);
+                                }
+                            }
+                        },
+                        legend: {
+                            display: false  // Hide legend to save space
+                        }
+                    }
+                }
+            };
+            
+            // If chart with this ID already exists, destroy it
             if (window[chartId]) {
                 window[chartId].destroy();
             }
             
-            // If no data, show a message
-            if (labels.length === 0) {
-                const context = ctx.getContext('2d');
-                context.clearRect(0, 0, ctx.width, ctx.height);
-                context.font = '14px Arial';
-                context.fillStyle = '#666';
-                context.textAlign = 'center';
-                context.fillText('No data available yet. Data will appear as metrics are collected.', ctx.width/2 || 150, ctx.height/2 || 100);
-                return;
-            }
-            
             // Create new chart
             try {
-                window[chartId] = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: label,
-                            data: data,
-                            backgroundColor: backgroundColor,
-                            borderColor: borderColor,
-                            borderWidth: 1,
-                            tension: 0.1,
-                            pointRadius: 0.5
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: 'hour',
-                                    displayFormats: {
-                                        hour: 'MMM d, HH:mm'
-                                    },
-                                    tooltipFormat: 'MMM d, HH:mm:ss'
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'Time'
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: label
-                                }
-                            }
-                        },
-                        plugins: {
-                            title: {
-                                display: true,
-                                text: label
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        let value = context.parsed.y;
-                                        if (label.includes('Temperature')) {
-                                            return `${value}°C`;
-                                        } else if (label.includes('Utilization') || label.includes('Memory')) {
-                                            return `${value}%`;
-                                        } else if (label.includes('Power')) {
-                                            return `${value}W`;
-                                        }
-                                        return value;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
+                window[chartId] = new Chart(ctx, chartConfig);
+                console.log(`Chart ${chartId} created successfully`);
             } catch (error) {
                 console.error(`Error creating chart ${chartId}:`, error);
                 const context = ctx.getContext('2d');
-                context.clearRect(0, 0, ctx.width, ctx.height);
+                context.clearRect(0, 0, ctx.width || ctx.clientWidth, ctx.height || ctx.clientHeight);
                 context.font = '14px Arial';
                 context.fillStyle = 'red';
                 context.textAlign = 'center';
-                context.fillText('Error creating chart. Check console for details.', ctx.width/2 || 150, ctx.height/2 || 100);
+                context.fillText('Error creating chart. Check console for details.', 
+                                 (ctx.width || ctx.clientWidth) / 2, 
+                                 (ctx.height || ctx.clientHeight) / 2);
             }
         }
         
-        // Initialize charts when the page loads
+        // Initialize charts and set up event handlers
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing charts...');
-            {% if metrics and metrics.gpus %}
-                {% for gpu in metrics.gpus %}
-                    // Get current time range (default to 24 hours)
-                    const activeButton = document.querySelector('.time-range.active');
-                    const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
-                    
-                    // Initial load of metrics data
-                    console.log('Loading initial metrics for GPU {{ loop.index0 }}');
-                    loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
-                {% endfor %}
-            {% endif %}
+            console.log('DOM loaded, initializing GPU metrics timeline...');
             
-            // Set up time range button click handlers
-            document.querySelectorAll('.time-range').forEach(button => {
-                button.addEventListener('click', function() {
-                    // Update active button
-                    document.querySelectorAll('.time-range').forEach(btn => btn.classList.remove('active'));
+            // Fix for time range buttons - ensure 24 hours is selected by default
+            const timeRangeButtons = document.querySelectorAll('.time-range');
+            let activeButtonFound = false;
+            
+            timeRangeButtons.forEach(button => {
+                if (button.classList.contains('active')) {
+                    activeButtonFound = true;
+                }
+                
+                // Add click event listeners to time range buttons
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log(`Time range button clicked: ${this.getAttribute('data-hours')} hours`);
+                    
+                    // Update active button styling
+                    timeRangeButtons.forEach(btn => btn.classList.remove('active'));
                     this.classList.add('active');
                     
                     // Get new time range
@@ -513,18 +580,40 @@
                     // Reload data for all GPUs with new time range
                     {% if metrics and metrics.gpus %}
                         {% for gpu in metrics.gpus %}
+                            console.log(`Reloading data for GPU {{ loop.index0 }} with ${hours} hour timeframe`);
                             loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
                         {% endfor %}
                     {% endif %}
                 });
             });
-        });
-        
-        // Update metrics data every 60 seconds
-        const metricsUpdateInterval = setInterval(function() {
+            
+            // If no active button was found, set the 24h button as active by default
+            if (!activeButtonFound) {
+                const defaultButton = document.querySelector('.time-range[data-hours="24"]');
+                if (defaultButton) {
+                    defaultButton.classList.add('active');
+                }
+            }
+            
+            // Initial load of metrics data for all GPUs
             {% if metrics and metrics.gpus %}
                 {% for gpu in metrics.gpus %}
-                    // Get current time range
+                    // Get current time range from active button
+                    const activeButton = document.querySelector('.time-range.active');
+                    const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
+                    
+                    console.log(`Initial load of metrics for GPU {{ loop.index0 }} with ${hours} hour timeframe`);
+                    loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                {% endfor %}
+            {% endif %}
+        });
+        
+        // Setup polling for real-time updates - refresh metrics every 30 seconds
+        const metricsUpdateInterval = setInterval(function() {
+            console.log('Automatic refresh of metrics data');
+            {% if metrics and metrics.gpus %}
+                {% for gpu in metrics.gpus %}
+                    // Get current time range from active button
                     const activeButton = document.querySelector('.time-range.active');
                     const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
                     
@@ -532,7 +621,7 @@
                     loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
                 {% endfor %}
             {% endif %}
-        }, 60000); // Update every minute
+        }, 30000); // Update every 30 seconds for more responsive updates
     </script>
 </body>
 </html>
