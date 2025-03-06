@@ -40,6 +40,7 @@ class Command(db.Model):
 
 # GPU Metrics History model
 class GPUMetricsHistory(db.Model):
+    __tablename__ = 'gpu_metrics_history'  # Explicitly define table name
     id = db.Column(db.Integer, primary_key=True)
     worker_id = db.Column(db.Integer, db.ForeignKey('worker.id'), nullable=False)
     gpu_index = db.Column(db.Integer, nullable=False)  # Index of the GPU in the worker's system
@@ -49,6 +50,13 @@ class GPUMetricsHistory(db.Model):
     memory_used = db.Column(db.Float)  # Memory used in MB
     memory_total = db.Column(db.Float)  # Total memory in MB
     power_usage = db.Column(db.Float, nullable=True)  # Power usage in Watts (if available)
+    
+    @property
+    def memory_utilization(self):
+        """Calculate memory utilization as a percentage"""
+        if self.memory_total and self.memory_total > 0:
+            return (self.memory_used / self.memory_total) * 100
+        return 0
     
     worker = db.relationship('Worker', backref=db.backref('metrics_history', lazy=True))
     
