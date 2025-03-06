@@ -166,6 +166,29 @@ def submit_multi_command():
     
     return redirect('/')
 
+# Stop a running command
+@app.route('/stop_command/<int:command_id>', methods=['POST'])
+def stop_command(command_id):
+    command = Command.query.get_or_404(command_id)
+    worker = Worker.query.get(command.worker_id)
+    
+    # Mark the command as needing to be stopped
+    command.status = 'stopping'
+    db.session.commit()
+    
+    # Redirect back to the worker page
+    return redirect(f'/worker/{worker.worker_id}')
+
+# Get real-time command output
+@app.route('/command_output/<int:command_id>', methods=['GET'])
+def get_command_output(command_id):
+    command = Command.query.get_or_404(command_id)
+    return jsonify({
+        'status': command.status,
+        'output': command.output,
+        'updated_at': command.updated_at.isoformat()
+    })
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()  # Create database tables

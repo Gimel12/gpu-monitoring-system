@@ -213,28 +213,119 @@ class GPUWorker:
         
         return None, None
     
-    def execute_command(self, command):
+    def execute_command(self, command_id, command):
         """Execute a shell command and return the output"""
         try:
+            # Start the process
             process = subprocess.Popen(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
             )
-            stdout, stderr = process.communicate(timeout=60)  # 60 second timeout
             
-            output = stdout
-            if stderr:
-                output += f"\nSTDERR:\n{stderr}"
+            # Initialize output
+            output = ""
+            status = "running"
             
-            status = "completed" if process.returncode == 0 else "failed"
+            # Send initial status update
+            self.send_command_output(command_id, status, "Command started...\n")
+            
+            # Read output line by line with timeout
+            start_time = time.time()
+            max_runtime = 3600  # 1 hour max runtime
+            
+            # Use non-blocking reads
+            import select
+            import fcntl
+            import os
+            
+            # Set stdout and stderr to non-blocking mode
+            for pipe in [process.stdout, process.stderr]:
+                fd = pipe.fileno()
+                fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+            
+            # Poll for output and check command status periodically
+            while process.poll() is None:
+                # Check if we should stop the command
+                if self.check_command_status(command_id) == "stopping":
+                    process.terminate()
+                    time.sleep(1)  # Give it a second to terminate
+                    if process.poll() is None:  # If still running
+                        process.kill()  # Force kill
+                    output += "\n\nCommand was manually stopped."
+                    status = "stopped"
+                    break
+                
+                # Check for timeout
+                if time.time() - start_time > max_runtime:
+                    process.terminate()
+                    time.sleep(1)
+                    if process.poll() is None:
+                        process.kill()
+                    output += "\n\nCommand exceeded maximum runtime of 1 hour and was terminated."
+                    status = "failed"
+                    break
+                
+                # Check for output
+                reads = [process.stdout.fileno(), process.stderr.fileno()]
+                readable, _, _ = select.select(reads, [], [], 1.0)  # 1 second timeout
+                
+                # Read any available output
+                if process.stdout.fileno() in readable:
+                    line = process.stdout.readline()
+                    if line:
+                        output += line
+                        # Send incremental updates every 5 seconds
+                        if int(time.time()) % 5 == 0:
+                            self.send_command_output(command_id, "running", output)
+                
+                if process.stderr.fileno() in readable:
+                    line = process.stderr.readline()
+                    if line:
+                        output += "STDERR: " + line
+                        # Send incremental updates every 5 seconds
+                        if int(time.time()) % 5 == 0:
+                            self.send_command_output(command_id, "running", output)
+                
+                # Short sleep to prevent CPU hogging
+                time.sleep(0.1)
+            
+            # Get any remaining output
+            remaining_stdout, remaining_stderr = process.communicate()
+            if remaining_stdout:
+                output += remaining_stdout
+            if remaining_stderr:
+                output += "\nSTDERR:\n" + remaining_stderr
+            
+            # Set final status if not already set
+            if status == "running":
+                status = "completed" if process.returncode == 0 else "failed"
+            
             return status, output
-        except subprocess.TimeoutExpired:
-            return "failed", "Command timed out after 60 seconds"
         except Exception as e:
             return "failed", f"Error executing command: {e}"
+    
+    def check_command_status(self, command_id):
+        """Check if a command should be stopped"""
+        try:
+            response = requests.get(
+                f"{self.master_url}/command_output/{command_id}",
+                headers=self.headers,
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("status")
+        except Exception as e:
+            print(f"Error checking command status: {e}")
+        
+        return "running"  # Default to running if we can't check
     
     def send_command_output(self, command_id, status, output):
         """Send command output back to the master server"""
@@ -281,7 +372,8 @@ class GPUWorker:
                 # Check for commands
                 command_id, command = self.check_commands()
                 if command_id and command:
-                    status, output = self.execute_command(command)
+                    status, output = self.execute_command(command_id, command)
+                    # Final update with complete output
                     self.send_command_output(command_id, status, output)
                 
             except Exception as e:
