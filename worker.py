@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import time
 import json
 import socket
@@ -19,7 +20,8 @@ except ImportError:
 class GPUWorker:
     def __init__(self, master_url, worker_id=None, token_file="token.txt"):
         self.master_url = master_url.rstrip('/')
-        self.worker_id = worker_id or socket.gethostname()
+        self.worker_id = worker_id if worker_id else socket.gethostname()
+        print(f"Worker ID set to: {self.worker_id}")
         self.token_file = token_file
         self.token = None
         self.headers = None
@@ -289,21 +291,42 @@ class GPUWorker:
             time.sleep(interval)
 
 def main():
+    # Check for environment variables (for Docker deployment)
+    env_master_url = os.environ.get('MASTER_URL')
+    env_worker_id = os.environ.get('WORKER_ID')
+    env_token_file = os.environ.get('TOKEN_FILE')
+    env_interval = os.environ.get('UPDATE_INTERVAL')
+    
     parser = argparse.ArgumentParser(description='GPU Worker Client')
-    parser.add_argument('--master', required=True, help='Master server URL (e.g., http://master-ip:5000)')
+    parser.add_argument('--master', required=not bool(env_master_url), 
+                      help='Master server URL (e.g., http://master-ip:5000)')
     parser.add_argument('--worker-id', help='Worker ID (defaults to hostname)')
     parser.add_argument('--token-file', default='token.txt', help='File to store authentication token')
     parser.add_argument('--interval', type=int, default=5, help='Interval between metric updates in seconds')
     
     args = parser.parse_args()
     
+    # Use environment variables as fallbacks
+    master_url = args.master or env_master_url
+    worker_id = args.worker_id or env_worker_id
+    token_file = args.token_file or env_token_file or 'token.txt'
+    interval = args.interval or (int(env_interval) if env_interval else 5)
+    
+    if not master_url:
+        print("Error: Master URL must be provided either via --master argument or MASTER_URL environment variable")
+        sys.exit(1)
+        
+    # Debug print for worker ID
+    if worker_id:
+        print(f"Worker ID provided: {worker_id} (via {'environment' if env_worker_id and worker_id == env_worker_id else 'command line'})")
+    
     worker = GPUWorker(
-        master_url=args.master,
-        worker_id=args.worker_id,
-        token_file=args.token_file
+        master_url=master_url,
+        worker_id=worker_id,
+        token_file=token_file
     )
     
-    worker.run(interval=args.interval)
+    worker.run(interval=interval)
 
 if __name__ == "__main__":
     main()
