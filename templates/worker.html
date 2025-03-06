@@ -207,6 +207,72 @@
                         {% endif %}
                     </div>
                 </div>
+                
+                <!-- GPU Overclocking Section -->
+                <div class="card mt-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">GPU Overclocking</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning">
+                            <strong>Warning:</strong> Overclocking can potentially damage your hardware if not done carefully. 
+                            Use these settings at your own risk.
+                        </div>
+                        
+                        {% if metrics and metrics.gpus %}
+                            <div id="power-limits-container" class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6>Power Limits</h6>
+                                    <button id="refresh-power-limits" class="btn btn-sm btn-outline-secondary">Refresh Limits</button>
+                                </div>
+                                <div id="power-limits-loading" class="text-center">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <span class="ms-2">Loading power limits...</span>
+                                </div>
+                                <div id="power-limits-data" class="d-none">
+                                    <!-- Power limits will be displayed here -->
+                                </div>
+                            </div>
+                            
+                            {% for gpu in metrics.gpus %}
+                                <div class="card mb-3">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0">GPU {{ loop.index }}: {{ gpu.model }}</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="tdp-form-{{ loop.index0 }}" class="tdp-form">
+                                            <input type="hidden" name="worker_id" value="{{ worker.worker_id }}">
+                                            <input type="hidden" name="gpu_index" value="{{ loop.index0 }}">
+                                            
+                                            <div class="mb-3">
+                                                <label for="power-limit-{{ loop.index0 }}" class="form-label">Power Limit (TDP) in Watts:</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" id="power-limit-{{ loop.index0 }}" 
+                                                           name="power_limit" min="50" max="500" step="5" 
+                                                           placeholder="Enter power limit (W)" required>
+                                                    <span class="input-group-text">W</span>
+                                                    <button type="submit" class="btn btn-primary">Apply</button>
+                                                </div>
+                                                <div class="form-text">
+                                                    Current: <span class="current-power-limit" data-gpu-index="{{ loop.index0 }}">Unknown</span>, 
+                                                    Max: <span class="max-power-limit" data-gpu-index="{{ loop.index0 }}">Unknown</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="tdp-status-{{ loop.index0 }}" class="alert d-none"></div>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-warning">
+                                No GPU metrics available for this worker. Cannot configure overclocking settings.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -622,6 +688,201 @@
                 {% endfor %}
             {% endif %}
         }, 30000); // Update every 30 seconds for more responsive updates
+        
+        // GPU Overclocking functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load power limits on page load
+            loadPowerLimits('{{ worker.worker_id }}');
+            
+            // Refresh power limits button
+            const refreshButton = document.getElementById('refresh-power-limits');
+            if (refreshButton) {
+                refreshButton.addEventListener('click', function() {
+                    loadPowerLimits('{{ worker.worker_id }}');
+                });
+            }
+            
+            // Set up TDP form submission handlers
+            const tdpForms = document.querySelectorAll('.tdp-form');
+            tdpForms.forEach(form => {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const formData = new FormData(this);
+                    const gpuIndex = formData.get('gpu_index');
+                    const powerLimit = formData.get('power_limit');
+                    
+                    // Show loading state
+                    const statusDiv = document.getElementById(`tdp-status-${gpuIndex}`);
+                    statusDiv.className = 'alert alert-info';
+                    statusDiv.textContent = `Setting power limit to ${powerLimit}W...`;
+                    statusDiv.classList.remove('d-none');
+                    
+                    // Send request to set TDP
+                    fetch('/api/gpu/set_tdp', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('TDP set response:', data);
+                        if (data.status === 'success') {
+                            statusDiv.className = 'alert alert-success';
+                            statusDiv.textContent = data.message;
+                            
+                            // Refresh power limits after a delay to show the new values
+                            setTimeout(() => {
+                                loadPowerLimits('{{ worker.worker_id }}');
+                            }, 3000);
+                        } else {
+                            statusDiv.className = 'alert alert-danger';
+                            statusDiv.textContent = `Error: ${data.message}`;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error setting TDP:', error);
+                        statusDiv.className = 'alert alert-danger';
+                        statusDiv.textContent = `Error: ${error.message}`;
+                    });
+                });
+            });
+        });
+        
+        // Function to load power limits for all GPUs
+        function loadPowerLimits(workerId) {
+            // Show loading state
+            const loadingDiv = document.getElementById('power-limits-loading');
+            const dataDiv = document.getElementById('power-limits-data');
+            
+            if (loadingDiv && dataDiv) {
+                loadingDiv.classList.remove('d-none');
+                dataDiv.classList.add('d-none');
+                
+                // Request power limits
+                fetch(`/api/gpu/get_power_limits?worker_id=${workerId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Power limits request:', data);
+                        if (data.status === 'success') {
+                            // Wait for the command to complete and then check its output
+                            checkPowerLimitsCommand(data.command_id);
+                        } else {
+                            showPowerLimitsError(data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error requesting power limits:', error);
+                        showPowerLimitsError(error.message);
+                    });
+            }
+        }
+        
+        // Function to check the power limits command output
+        function checkPowerLimitsCommand(commandId) {
+            fetch(`/command_output/${commandId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed') {
+                        // Parse the command output to get power limits
+                        parsePowerLimitsOutput(data.output);
+                    } else if (data.status === 'running' || data.status === 'pending') {
+                        // Command still running, check again after a delay
+                        setTimeout(() => {
+                            checkPowerLimitsCommand(commandId);
+                        }, 1000);
+                    } else {
+                        // Command failed
+                        showPowerLimitsError(`Command failed: ${data.status}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking power limits command:', error);
+                    showPowerLimitsError(error.message);
+                });
+        }
+        
+        // Function to parse the power limits command output
+        function parsePowerLimitsOutput(output) {
+            try {
+                const lines = output.trim().split('\n');
+                const powerLimitsData = document.getElementById('power-limits-data');
+                const loadingDiv = document.getElementById('power-limits-loading');
+                
+                if (lines.length > 0 && powerLimitsData) {
+                    // Create a table to display the power limits
+                    let html = `
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>GPU</th>
+                                    <th>Current Limit (W)</th>
+                                    <th>Default Limit (W)</th>
+                                    <th>Min Limit (W)</th>
+                                    <th>Max Limit (W)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    lines.forEach(line => {
+                        const parts = line.split(',').map(part => part.trim());
+                        if (parts.length >= 5) {
+                            const [index, currentLimit, defaultLimit, minLimit, maxLimit] = parts;
+                            
+                            html += `
+                                <tr>
+                                    <td>${index}</td>
+                                    <td>${currentLimit}</td>
+                                    <td>${defaultLimit}</td>
+                                    <td>${minLimit}</td>
+                                    <td>${maxLimit}</td>
+                                </tr>
+                            `;
+                            
+                            // Update the current and max power limit displays
+                            const currentSpan = document.querySelector(`.current-power-limit[data-gpu-index="${index}"]`);
+                            const maxSpan = document.querySelector(`.max-power-limit[data-gpu-index="${index}"]`);
+                            
+                            if (currentSpan) currentSpan.textContent = `${currentLimit}W`;
+                            if (maxSpan) maxSpan.textContent = `${maxLimit}W`;
+                            
+                            // Update the power limit input field with the current value as placeholder
+                            const inputField = document.getElementById(`power-limit-${index}`);
+                            if (inputField) {
+                                inputField.placeholder = currentLimit;
+                                inputField.max = maxLimit;
+                            }
+                        }
+                    });
+                    
+                    html += `
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    // Update the UI
+                    powerLimitsData.innerHTML = html;
+                    powerLimitsData.classList.remove('d-none');
+                    loadingDiv.classList.add('d-none');
+                } else {
+                    showPowerLimitsError('No power limits data available');
+                }
+            } catch (error) {
+                console.error('Error parsing power limits output:', error);
+                showPowerLimitsError(error.message);
+            }
+        }
+        
+        // Function to show power limits error
+        function showPowerLimitsError(message) {
+            const loadingDiv = document.getElementById('power-limits-loading');
+            const dataDiv = document.getElementById('power-limits-data');
+            
+            if (loadingDiv && dataDiv) {
+                loadingDiv.classList.add('d-none');
+                dataDiv.classList.remove('d-none');
+                dataDiv.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+            }
+        }
     </script>
 </body>
 </html>

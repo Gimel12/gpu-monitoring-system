@@ -330,6 +330,86 @@ def stop_command(command_id):
     # Redirect back to the worker page
     return redirect(f'/worker/{worker.worker_id}')
 
+# GPU Overclocking API endpoints
+@app.route('/api/gpu/set_tdp', methods=['POST'])
+def set_gpu_tdp():
+    """Set the TDP (power limit) for a specific GPU"""
+    try:
+        worker_id = request.form.get('worker_id')
+        gpu_index = request.form.get('gpu_index', type=int)
+        power_limit = request.form.get('power_limit', type=int)
+        
+        if not worker_id or gpu_index is None or not power_limit:
+            return jsonify({'status': 'error', 'message': 'Missing required parameters'}), 400
+        
+        # Validate power limit (reasonable range between 50W and 500W)
+        if power_limit < 50 or power_limit > 500:
+            return jsonify({'status': 'error', 'message': 'Power limit must be between 50W and 500W'}), 400
+        
+        # Get the worker
+        worker = Worker.query.filter_by(worker_id=worker_id).first()
+        if not worker:
+            return jsonify({'status': 'error', 'message': 'Worker not found'}), 404
+        
+        # Create the command to set TDP
+        # First enable persistence mode if not already enabled
+        persistence_cmd = Command(
+            worker_id=worker.id, 
+            command_text=f"nvidia-smi -pm 1"
+        )
+        db.session.add(persistence_cmd)
+        db.session.commit()
+        
+        # Then set the power limit
+        tdp_cmd = Command(
+            worker_id=worker.id, 
+            command_text=f"nvidia-smi -i {gpu_index} -pl {power_limit}"
+        )
+        db.session.add(tdp_cmd)
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success', 
+            'message': f'Setting GPU {gpu_index} power limit to {power_limit}W',
+            'command_ids': [persistence_cmd.id, tdp_cmd.id]
+        })
+        
+    except Exception as e:
+        print(f"Error setting GPU TDP: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/gpu/get_power_limits', methods=['GET'])
+def get_gpu_power_limits():
+    """Get the current and maximum power limits for GPUs on a worker"""
+    try:
+        worker_id = request.args.get('worker_id')
+        
+        if not worker_id:
+            return jsonify({'status': 'error', 'message': 'Missing worker_id parameter'}), 400
+        
+        # Get the worker
+        worker = Worker.query.filter_by(worker_id=worker_id).first()
+        if not worker:
+            return jsonify({'status': 'error', 'message': 'Worker not found'}), 404
+        
+        # Create command to get power limits
+        cmd = Command(
+            worker_id=worker.id, 
+            command_text="nvidia-smi --query-gpu=index,power.limit,power.default_limit,power.min_limit,power.max_limit --format=csv,noheader,nounits"
+        )
+        db.session.add(cmd)
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Command to get power limits has been queued',
+            'command_id': cmd.id
+        })
+        
+    except Exception as e:
+        print(f"Error getting GPU power limits: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # Get real-time command output
 @app.route('/command_output/<int:command_id>', methods=['GET'])
 def get_command_output(command_id):
