@@ -300,12 +300,42 @@
         
         // Function to load metrics data from API
         function loadMetricsData(workerId, gpuIndex, hours) {
+            console.log(`Loading metrics data for worker ${workerId}, GPU ${gpuIndex}, hours: ${hours}`);
             fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}`)
-                .then(response => response.json())
-                .then(data => {
-                    updateCharts(data, gpuIndex);
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
                 })
-                .catch(error => console.error(`Error loading metrics data for GPU ${gpuIndex}:`, error));
+                .then(data => {
+                    console.log(`Received metrics data:`, data);
+                    if (data.timestamps && data.timestamps.length > 0) {
+                        console.log(`Got ${data.timestamps.length} data points`);
+                        updateCharts(data, gpuIndex);
+                    } else {
+                        console.log(`No data points available yet. Charts will be empty.`);
+                        // Still update charts with empty data to initialize them
+                        updateCharts({
+                            timestamps: [],
+                            temperature: [],
+                            utilization: [],
+                            memory_utilization: [],
+                            power_usage: []
+                        }, gpuIndex);
+                    }
+                })
+                .catch(error => {
+                    console.error(`Error loading metrics data for GPU ${gpuIndex}:`, error);
+                    // Display error message in the chart containers
+                    document.querySelectorAll(`[id$='Chart${gpuIndex}']`).forEach(canvas => {
+                        const ctx = canvas.getContext('2d');
+                        ctx.font = '14px Arial';
+                        ctx.fillStyle = 'red';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Error loading metrics data. Check console for details.', canvas.width/2, canvas.height/2);
+                    });
+                });
         }
         
         // Function to update charts with new data
@@ -356,61 +386,103 @@
         // Helper function to create or update a chart
         function updateChart(chartId, labels, data, label, backgroundColor, borderColor) {
             const ctx = document.getElementById(chartId);
+            if (!ctx) {
+                console.error(`Canvas element with ID ${chartId} not found`);
+                return;
+            }
+            
+            console.log(`Updating chart ${chartId} with ${labels.length} data points`);
             
             // Destroy existing chart if it exists
             if (window[chartId]) {
                 window[chartId].destroy();
             }
             
+            // If no data, show a message
+            if (labels.length === 0) {
+                const context = ctx.getContext('2d');
+                context.clearRect(0, 0, ctx.width, ctx.height);
+                context.font = '14px Arial';
+                context.fillStyle = '#666';
+                context.textAlign = 'center';
+                context.fillText('No data available yet. Data will appear as metrics are collected.', ctx.width/2 || 150, ctx.height/2 || 100);
+                return;
+            }
+            
             // Create new chart
-            window[chartId] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        backgroundColor: backgroundColor,
-                        borderColor: borderColor,
-                        borderWidth: 1,
-                        tension: 0.1,
-                        pointRadius: 0.5
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'hour',
-                                displayFormats: {
-                                    hour: 'MMM d, HH:mm'
+            try {
+                window[chartId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: label,
+                            data: data,
+                            backgroundColor: backgroundColor,
+                            borderColor: borderColor,
+                            borderWidth: 1,
+                            tension: 0.1,
+                            pointRadius: 0.5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'hour',
+                                    displayFormats: {
+                                        hour: 'MMM d, HH:mm'
+                                    },
+                                    tooltipFormat: 'MMM d, HH:mm:ss'
                                 },
-                                tooltipFormat: 'MMM d, HH:mm:ss'
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
                             },
-                            title: {
-                                display: true,
-                                text: 'Time'
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: label
+                                }
                             }
                         },
-                        y: {
-                            beginAtZero: true,
+                        plugins: {
                             title: {
                                 display: true,
                                 text: label
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let value = context.parsed.y;
+                                        if (label.includes('Temperature')) {
+                                            return `${value}°C`;
+                                        } else if (label.includes('Utilization') || label.includes('Memory')) {
+                                            return `${value}%`;
+                                        } else if (label.includes('Power')) {
+                                            return `${value}W`;
+                                        }
+                                        return value;
+                                    }
+                                }
                             }
                         }
-                    },
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: label
-                        }
                     }
-                }
-            });
+                });
+            } catch (error) {
+                console.error(`Error creating chart ${chartId}:`, error);
+                const context = ctx.getContext('2d');
+                context.clearRect(0, 0, ctx.width, ctx.height);
+                context.font = '14px Arial';
+                context.fillStyle = 'red';
+                context.textAlign = 'center';
+                context.fillText('Error creating chart. Check console for details.', ctx.width/2 || 150, ctx.height/2 || 100);
+            }
         }
         
         // Don't refresh the page automatically if we're viewing metrics

@@ -188,6 +188,9 @@ class GPUWorker:
     def send_metrics(self, metrics):
         """Send metrics to the master server"""
         try:
+            # Add debug output to verify metrics structure
+            print(f"Sending metrics to master: {json.dumps(metrics, indent=2)}")
+            
             response = requests.post(
                 f"{self.master_url}/metrics", 
                 json={"metrics": metrics},
@@ -196,6 +199,7 @@ class GPUWorker:
             )
             
             if response.status_code == 200:
+                print(f"Successfully sent metrics to master")
                 return True
             else:
                 print(f"Failed to send metrics: {response.status_code} - {response.text}")

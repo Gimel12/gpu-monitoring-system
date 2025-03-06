@@ -1,9 +1,30 @@
 #!/usr/bin/env python3
 from master import db, app, GPUMetricsHistory
 import os
+import sqlite3
 
 # Create the database tables if they don't exist
 with app.app_context():
     print("Creating GPUMetricsHistory table...")
     db.create_all()
+    
+    # Verify the table was created
+    db_path = app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
+    if db_path.startswith('/'):
+        # Absolute path
+        conn = sqlite3.connect(db_path)
+    else:
+        # Relative path
+        conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), db_path))
+    
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='gpu_metrics_history';")
+    result = cursor.fetchone()
+    
+    if result:
+        print("Verified GPUMetricsHistory table exists in database.")
+    else:
+        print("WARNING: GPUMetricsHistory table was not created properly!")
+    
+    conn.close()
     print("Database migration completed successfully!")

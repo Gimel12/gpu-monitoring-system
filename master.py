@@ -177,8 +177,11 @@ def get_metrics_history(worker_id, gpu_index):
     hours = request.args.get('hours', 24, type=int)
     start_time = datetime.utcnow() - timedelta(hours=hours)
     
+    print(f"Fetching metrics history for worker_id={worker_id}, gpu_index={gpu_index}, hours={hours}")
+    
     # Get the worker
     worker = Worker.query.filter_by(worker_id=worker_id).first_or_404()
+    print(f"Found worker with ID {worker.id}")
     
     # Query for metrics history
     metrics = GPUMetricsHistory.query.filter(
@@ -186,6 +189,8 @@ def get_metrics_history(worker_id, gpu_index):
         GPUMetricsHistory.gpu_index == gpu_index,
         GPUMetricsHistory.timestamp >= start_time
     ).order_by(GPUMetricsHistory.timestamp).all()
+    
+    print(f"Found {len(metrics)} metrics records for the specified time range")
     
     # Format the data for charts
     result = {
@@ -202,6 +207,9 @@ def get_metrics_history(worker_id, gpu_index):
         result['utilization'].append(metric.utilization)
         result['memory_utilization'].append(metric.memory_utilization)
         result['power_usage'].append(metric.power_usage)
+    
+    # Add debug output
+    print(f"Returning {len(result['timestamps'])} data points")
     
     return jsonify(result)
 
