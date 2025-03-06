@@ -3,9 +3,13 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import secrets
 import json
+import os
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workers.db'
+
+# Use environment variable for database URI if provided, otherwise use default
+db_uri = os.environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///workers.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -141,6 +145,23 @@ def submit_command():
     if worker and command_text:
         command = Command(worker_id=worker.id, command_text=command_text)
         db.session.add(command)
+        db.session.commit()
+    
+    return redirect('/')
+
+# Submit command to multiple workers
+@app.route('/submit_multi_command', methods=['POST'])
+def submit_multi_command():
+    worker_ids = request.form.getlist('worker_ids')
+    command_text = request.form.get('command')
+    
+    if command_text and worker_ids:
+        for worker_id in worker_ids:
+            worker = Worker.query.filter_by(worker_id=worker_id).first()
+            if worker:
+                command = Command(worker_id=worker.id, command_text=command_text)
+                db.session.add(command)
+        
         db.session.commit()
     
     return redirect('/')

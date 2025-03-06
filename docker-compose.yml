@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile.master
+    container_name: gpu-master
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - gpu-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: gpu-worker
+    environment:
+      - MASTER_URL=http://master:5000
+      - WORKER_ID=local-worker
+    volumes:
+      - /tmp:/tmp  # For potential temp file access
+    restart: unless-stopped
+    depends_on:
+      - master
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - gpu-network
+
+networks:
+  gpu-network:
+    driver: bridge
