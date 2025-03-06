@@ -1,0 +1,14 @@
+{
+    "version": 0,
+    "name": "gpu-monitor",
+    "requires": {
+        "cockpit": "122"
+    },
+    "menu": {
+        "index": {
+            "label": "GPU Monitor",
+            "order": 30,
+            "icon": "fa-microchip"
+        }
+    }
+}

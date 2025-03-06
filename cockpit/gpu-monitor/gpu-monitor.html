@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GPU Monitor</title>
+    <meta charset="utf-8">
+    <link href="../base1/patternfly.css" type="text/css" rel="stylesheet">
+    <script src="../base1/jquery.js"></script>
+    <script src="../base1/cockpit.js"></script>
+    <style>
+        .active-status { color: green; }
+        .inactive-status { color: red; }
+        .card { margin-bottom: 20px; }
+        .gpu-model {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+            display: inline-block;
+        }
+        .gpu-info-container {
+            max-width: 200px;
+        }
+        #command-footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-top: 1px solid #dee2e6;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="pf-m-redhat-font">
+    <div class="pf-c-page">
+        <main class="pf-c-page__main" tabindex="-1">
+            <section class="pf-c-page__main-section pf-m-light">
+                <div class="pf-c-content">
+                    <h1>GPU Worker Dashboard</h1>
+                </div>
+            </section>
+            <section class="pf-c-page__main-section">
+                <div class="pf-c-card">
+                    <div class="pf-c-card__header">
+                        <div class="pf-c-card__title">
+                            <h2 class="pf-c-title pf-m-lg">Connected Workers</h2>
+                        </div>
+                        <div class="pf-c-card__actions">
+                            <div class="pf-c-check">
+                                <input class="pf-c-check__input" type="checkbox" id="selectAllWorkers">
+                                <label class="pf-c-check__label" for="selectAllWorkers">Select All</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pf-c-card__body">
+                        <table class="pf-c-table pf-m-compact pf-m-grid-md" id="workers-table">
+                            <thead>
+                                <tr>
+                                    <th class="pf-c-table__check">Select</th>
+                                    <th>Worker ID</th>
+                                    <th>Status</th>
+                                    <th>GPUs</th>
+                                    <th>GPU Type</th>
+                                    <th>Last Seen</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workers-table-body">
+                                <!-- Worker rows will be inserted here by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Multi-worker command footer -->
+    <div id="command-footer">
+        <div class="pf-l-flex pf-m-align-items-center pf-m-justify-content-center">
+            <div class="pf-l-flex__item pf-m-grow">
+                <input type="text" class="pf-c-form-control" id="multiCommand" placeholder="Enter command to run on selected workers">
+                <div id="selectedWorkersCount" class="pf-c-form__helper-text">No workers selected</div>
+            </div>
+            <div class="pf-l-flex__item">
+                <button class="pf-c-button pf-m-primary" id="runMultiCommandBtn" disabled>Run on Selected Workers</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="gpu-monitor.js"></script>
+</body>
+</html>

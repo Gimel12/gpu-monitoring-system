@@ -137,6 +137,27 @@ sudo systemctl start gpu-worker.service
 - **Running Commands on Individual Workers**: Enter a command in the input field next to a worker and click "Run".
 - **Running Commands on Multiple Workers**: Use the checkboxes to select multiple workers, then use the command panel at the bottom of the page to run a command on all selected workers simultaneously.
 
+### Cockpit Integration
+
+The GPU monitoring system can be integrated with Cockpit, a web-based Linux server management interface, for easier access and management:
+
+1. **Installation**:
+   ```
+   cd /path/to/gpu_monitor/cockpit
+   sudo ./install.sh
+   ```
+
+2. **Access**:
+   - Open Cockpit in your browser: `https://<server-ip>:9090`
+   - Log in with your system credentials
+   - Click on the "GPU Monitor" tab in the menu
+
+3. **Features**:
+   - View all connected GPU workers in the Cockpit interface
+   - See GPU types and counts for each worker
+   - Run commands on individual or multiple workers
+   - Monitor GPU status directly from the Cockpit dashboard
+
 ### Worker Script Options
 
 The worker script accepts the following command-line arguments:
