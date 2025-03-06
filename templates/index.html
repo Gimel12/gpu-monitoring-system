@@ -17,6 +17,7 @@
             padding: 15px;
             border-top: 1px solid #dee2e6;
             z-index: 1000;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
         }
         .gpu-model {
             white-space: nowrap;
@@ -151,23 +152,19 @@
     <!-- Multi-worker command footer -->
     <div class="sticky-footer">
         <div class="container">
-            <div class="row">
-                <div class="col-md-8">
-                    <form action="/submit_multi_command" method="post" id="multiCommandForm">
-                        <div class="row align-items-center">
-                            <div class="col-md-9">
-                                <input type="text" class="form-control" name="command" id="multiCommand" placeholder="Enter command to run on selected workers">
-                                <div id="selectedWorkersCount" class="form-text">No workers selected</div>
-                            </div>
-                            <div class="col-md-3">
-                                <button type="submit" class="btn btn-success w-100" id="runMultiCommandBtn" disabled>Run Command</button>
-                            </div>
+            <div class="row align-items-center">
+                <div class="col-lg-8 col-md-7 mb-md-0 mb-3">
+                    <form action="/submit_multi_command" method="post" id="multiCommandForm" class="mb-0">
+                        <div class="input-group">
+                            <input type="text" class="form-control" name="command" id="multiCommand" placeholder="Enter command to run on selected workers">
+                            <button type="submit" class="btn btn-success" id="runMultiCommandBtn" disabled>Run Command</button>
                         </div>
+                        <div id="selectedWorkersCount" class="form-text mt-1 mb-0">No workers selected</div>
                     </form>
                 </div>
-                <div class="col-md-4">
-                    <form action="/delete_workers" method="post" id="deleteWorkersForm" onsubmit="return confirm('Are you sure you want to delete the selected workers?');">
-                        <button type="submit" class="btn btn-danger w-100" id="deleteWorkersBtn" disabled>Delete Selected Workers</button>
+                <div class="col-lg-4 col-md-5 d-flex justify-content-md-end justify-content-center align-items-center">
+                    <form action="/delete_workers" method="post" id="deleteWorkersForm" class="mb-0" onsubmit="return confirm('Are you sure you want to delete the selected workers?');">
+                        <button type="submit" class="btn btn-danger" id="deleteWorkersBtn" disabled>Delete Selected Workers</button>
                     </form>
                 </div>
             </div>
