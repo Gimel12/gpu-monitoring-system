@@ -132,8 +132,10 @@ class GPUWorker:
         
         try:
             # Run nvidia-smi to get GPU info
-            cmd = "nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free,power.draw --format=csv,noheader,nounits"
+            cmd = "sudo nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free,power.draw --format=csv,noheader,nounits"
+            print(f"Running command: {cmd}")
             output = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
+            print(f"nvidia-smi output: {output}")
             
             for i, line in enumerate(output.split('\n')):
                 if not line.strip():
@@ -188,6 +190,11 @@ class GPUWorker:
     def send_metrics(self, metrics):
         """Send metrics to the master server"""
         try:
+            # Check if we have any GPU data to send
+            if not metrics.get('gpus'):
+                print("Warning: No GPU metrics data available to send")
+                return False
+                
             # Add debug output to verify metrics structure
             print(f"Sending metrics to master: {json.dumps(metrics, indent=2)}")
             
@@ -235,6 +242,12 @@ class GPUWorker:
     def execute_command(self, command_id, command):
         """Execute a shell command and return the output"""
         try:
+            # Special handling for nvidia-smi commands that might need sudo
+            if 'nvidia-smi' in command and not command.startswith('sudo'):
+                print("Command contains nvidia-smi without sudo, adding sudo prefix")
+                command = f"sudo {command}"
+                print(f"Modified command: {command}")
+                
             # Start the process
             process = subprocess.Popen(
                 command,
@@ -375,6 +388,10 @@ class GPUWorker:
         
         print(f"Worker '{self.worker_id}' running, sending metrics every {interval} seconds")
         
+        # Track consecutive failures
+        consecutive_failures = 0
+        last_nvml_reset = time.time()
+        
         while True:
             try:
                 # Collect and send metrics
@@ -382,21 +399,48 @@ class GPUWorker:
                 metrics["timestamp"] = datetime.now().isoformat()
                 metrics["hostname"] = self.worker_id
                 
-                if not self.send_metrics(metrics):
-                    # If sending metrics fails, try to re-register
-                    print("Re-registering with master...")
-                    if not self.register():
-                        print("Re-registration failed. Will try again later.")
+                # Check if we have valid GPU data
+                if metrics and metrics.get('gpus'):
+                    if self.send_metrics(metrics):
+                        consecutive_failures = 0
+                    else:
+                        # If sending metrics fails, try to re-register
+                        print("Re-registering with master...")
+                        if not self.register():
+                            print("Re-registration failed. Will try again later.")
+                            consecutive_failures += 1
+                else:
+                    print("Warning: No GPU metrics collected or GPUs not detected")
+                    consecutive_failures += 1
                 
                 # Check for commands
                 command_id, command = self.check_commands()
                 if command_id and command:
+                    print(f"Executing command: {command}")
                     status, output = self.execute_command(command_id, command)
+                    print(f"Command completed with status: {status}")
                     # Final update with complete output
                     self.send_command_output(command_id, status, output)
                 
+                # If we've had too many consecutive failures, try to re-initialize NVML
+                if consecutive_failures >= 5 and (time.time() - last_nvml_reset) > 300:  # 5 minutes
+                    print("Too many consecutive failures, attempting to re-initialize NVML")
+                    if NVML_AVAILABLE:
+                        try:
+                            nvmlShutdown()
+                            time.sleep(1)
+                            nvmlInit()
+                            print("NVML re-initialized successfully")
+                            consecutive_failures = 0
+                            last_nvml_reset = time.time()
+                        except Exception as e:
+                            print(f"Failed to re-initialize NVML: {e}")
+                
             except Exception as e:
                 print(f"Error in worker loop: {e}")
+                consecutive_failures += 1
+                import traceback
+                traceback.print_exc()
             
             # Wait for next iteration
             time.sleep(interval)

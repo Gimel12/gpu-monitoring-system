@@ -501,8 +501,11 @@
                 ctx.fillText('Loading metrics data...', canvas.width/2 || 150, canvas.height/2 || 100);
             });
             
+            // Add timestamp to prevent caching
+            const timestamp = new Date().getTime();
+            
             // Use fetch with credentials to ensure cookies are sent
-            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}&_=${new Date().getTime()}`, {
+            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}&_=${timestamp}`, {
                 credentials: 'same-origin',
                 cache: 'no-cache' // Prevent caching
             })
@@ -1234,10 +1237,11 @@
                         }, 1000);
                     } else if (data.status === 'failed') {
                         // Command failed
-                        showPowerLimitsError(`Command failed to execute. The worker might not have GPU overclocking capabilities.`);
+                        showPowerLimitsError(`Command failed to execute. The worker might not have GPU overclocking capabilities or sudo access.`);
                     } else {
                         // Other status
                         showPowerLimitsError(`Command status: ${data.status}. Please try refreshing.`);
+                    }
                 })
                 .catch(error => {
                     console.error('Error checking power limits command:', error);
@@ -1253,6 +1257,12 @@
                 // Handle empty or invalid output
                 if (!output || output.trim() === '') {
                     showPowerLimitsError('No power limits data received from the server');
+                    return;
+                }
+                
+                // Check for permission errors
+                if (output.includes('Permission denied') || output.includes('requires administrator privileges')) {
+                    showPowerLimitsError('Permission denied when accessing GPU power limits. The worker may need sudo privileges.');
                     return;
                 }
                 
@@ -1320,6 +1330,13 @@
                                 inputField.min = minLimitNum;
                                 inputField.max = maxLimitNum;
                                 inputField.value = ''; // Clear any previous value
+                                
+                                // Enable the input field and button
+                                inputField.disabled = false;
+                                const submitBtn = document.querySelector(`button[form="tdp-form-${index}"]`);
+                                if (submitBtn) {
+                                    submitBtn.disabled = false;
+                                }
                             }
                         }
                     });

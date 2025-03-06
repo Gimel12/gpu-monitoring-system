@@ -363,7 +363,7 @@ def set_gpu_tdp():
         # First enable persistence mode if not already enabled
         persistence_cmd = Command(
             worker_id=worker.id, 
-            command_text=f"nvidia-smi -pm 1",
+            command_text=f"sudo nvidia-smi -pm 1",
             status='pending'
         )
         db.session.add(persistence_cmd)
@@ -372,7 +372,7 @@ def set_gpu_tdp():
         # Then set the power limit
         tdp_cmd = Command(
             worker_id=worker.id, 
-            command_text=f"nvidia-smi -i {gpu_index} -pl {power_limit}",
+            command_text=f"sudo nvidia-smi -i {gpu_index} -pl {power_limit}",
             status='pending'
         )
         db.session.add(tdp_cmd)
@@ -413,10 +413,14 @@ def get_gpu_power_limits():
         # Create command to get power limits
         cmd = Command(
             worker_id=worker.id, 
-            command_text="nvidia-smi --query-gpu=index,power.limit,power.default_limit,power.min_limit,power.max_limit --format=csv,noheader,nounits"
+            command_text="sudo nvidia-smi --query-gpu=index,power.limit,power.default_limit,power.min_limit,power.max_limit --format=csv,noheader,nounits",
+            status='pending'
         )
         db.session.add(cmd)
         db.session.commit()
+        
+        # Log the command for debugging
+        print(f"Created power limits command: {cmd.id} - {cmd.command_text}")
         
         return jsonify({
             'status': 'success',
@@ -431,12 +435,24 @@ def get_gpu_power_limits():
 # Get real-time command output
 @app.route('/command_output/<int:command_id>', methods=['GET'])
 def get_command_output(command_id):
-    command = Command.query.get_or_404(command_id)
-    return jsonify({
-        'status': command.status,
-        'output': command.output,
-        'updated_at': command.updated_at.isoformat()
-    })
+    try:
+        command = Command.query.get_or_404(command_id)
+        
+        # Log command status for debugging
+        print(f"Command {command_id} status: {command.status}, output length: {len(command.output) if command.output else 0}")
+        
+        return jsonify({
+            'status': command.status,
+            'output': command.output,
+            'updated_at': command.updated_at.isoformat()
+        })
+    except Exception as e:
+        print(f"Error retrieving command output for {command_id}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'output': f"Error retrieving command: {str(e)}",
+            'updated_at': datetime.utcnow().isoformat()
+        }), 500
 
 # Delete a worker
 @app.route('/delete_worker/<worker_id>', methods=['POST'])
