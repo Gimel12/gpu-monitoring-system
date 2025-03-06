@@ -25,6 +25,7 @@ class GPUWorker:
         self.headers = None
         
         # Initialize NVML if available
+        global NVML_AVAILABLE
         if NVML_AVAILABLE:
             try:
                 nvmlInit()
