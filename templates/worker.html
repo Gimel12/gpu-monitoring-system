@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Worker Details</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .gpu-card {
+            margin-bottom: 15px;
+            border-left: 4px solid #0d6efd;
+        }
+        .command-card {
+            margin-bottom: 10px;
+        }
+        .command-pending { background-color: #fff3cd; }
+        .command-running { background-color: #d1ecf1; }
+        .command-completed { background-color: #d4edda; }
+        .command-failed { background-color: #f8d7da; }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Worker: {{ worker.worker_id }}</h1>
+            <a href="/" class="btn btn-primary">Back to Dashboard</a>
+        </div>
+
+        <div class="row">
+            <!-- GPU Metrics Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">GPU Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        {% set metrics = worker.get_metrics_json() %}
+                        {% if metrics and metrics.gpus %}
+                            {% for gpu in metrics.gpus %}
+                                <div class="card gpu-card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">GPU {{ loop.index }}: {{ gpu.model }}</h5>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <p><strong>Temperature:</strong> {{ gpu.temp }}°C</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Utilization:</strong> {{ gpu.util }}%</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Temperature Progress Bar -->
+                                        <div class="mb-2">
+                                            <label class="form-label mb-0">Temperature</label>
+                                            {% set temp_percent = (gpu.temp / 100) * 100 %}
+                                            {% set temp_color = 'success' if gpu.temp < 70 else ('warning' if gpu.temp < 85 else 'danger') %}
+                                            <div class="progress">
+                                                <div class="progress-bar bg-{{ temp_color }}" role="progressbar" 
+                                                     style="width: {{ temp_percent }}%" 
+                                                     aria-valuenow="{{ gpu.temp }}" aria-valuemin="0" aria-valuemax="100">
+                                                    {{ gpu.temp }}°C
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Utilization Progress Bar -->
+                                        <div>
+                                            <label class="form-label mb-0">Utilization</label>
+                                            <div class="progress">
+                                                <div class="progress-bar bg-info" role="progressbar" 
+                                                     style="width: {{ gpu.util }}%" 
+                                                     aria-valuenow="{{ gpu.util }}" aria-valuemin="0" aria-valuemax="100">
+                                                    {{ gpu.util }}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-warning">
+                                No GPU metrics available for this worker.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Commands Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">Recent Commands</h5>
+                    </div>
+                    <div class="card-body">
+                        <form action="/submit_command" method="post" class="mb-4">
+                            <input type="hidden" name="worker_id" value="{{ worker.worker_id }}">
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="command" placeholder="Enter command to run on this worker">
+                                <button type="submit" class="btn btn-primary">Run Command</button>
+                            </div>
+                        </form>
+
+                        {% if commands %}
+                            <h6>Command History:</h6>
+                            {% for command in commands %}
+                                <div class="card command-card command-{{ command.status }}">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <span><strong>{{ command.command_text }}</strong></span>
+                                        <span class="badge {% if command.status == 'pending' %}bg-warning{% elif command.status == 'running' %}bg-info{% elif command.status == 'completed' %}bg-success{% else %}bg-danger{% endif %}">
+                                            {{ command.status }}
+                                        </span>
+                                    </div>
+                                    {% if command.output %}
+                                        <div class="card-body">
+                                            <pre>{{ command.output }}</pre>
+                                            <small class="text-muted">Updated: {{ command.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-info">
+                                No commands have been run on this worker yet.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh the page every 10 seconds
+        setTimeout(function() {
+            location.reload();
+        }, 10000);
+    </script>
+</body>
+</html>
