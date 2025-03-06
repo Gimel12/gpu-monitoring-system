@@ -2,6 +2,7 @@
 from master import db, app, GPUMetricsHistory, Worker, Command
 import os
 import sqlite3
+from sqlalchemy import text
 
 # Create the database tables if they don't exist
 with app.app_context():
@@ -10,7 +11,7 @@ with app.app_context():
     # Drop the table if it exists to recreate it
     try:
         print("Dropping existing GPUMetricsHistory table if it exists...")
-        db.session.execute('DROP TABLE IF EXISTS gpu_metrics_history')
+        db.session.execute(text("DROP TABLE IF EXISTS gpu_metrics_history"))
         db.session.commit()
         print("Table dropped successfully.")
     except Exception as e:
