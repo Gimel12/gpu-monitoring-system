@@ -59,13 +59,6 @@ class GPUMetricsHistory(db.Model):
         return 0
     
     worker = db.relationship('Worker', backref=db.backref('metrics_history', lazy=True))
-    
-    @property
-    def memory_utilization(self):
-        """Calculate memory utilization percentage"""
-        if self.memory_total > 0:
-            return (self.memory_used / self.memory_total) * 100
-        return 0
 
 # Generate a unique token
 def generate_token():
