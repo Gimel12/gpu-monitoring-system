@@ -35,10 +35,46 @@
         }
         .chart-container {
             position: relative;
-            margin-top: 20px;
+            margin-top: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #ffffff;
         }
         .time-range-selector {
             margin-bottom: 15px;
+        }
+        .metric-view {
+            transition: all 0.3s ease;
+        }
+        .metric-selector {
+            max-width: 100%;
+        }
+        .card.bg-light {
+            transition: all 0.2s ease;
+            border: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .card.bg-light:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .card-body.p-2.text-center h5 {
+            font-weight: 600;
+            font-size: 1.25rem;
+            color: #333;
+        }
+        .text-muted {
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .btn-group .btn-outline-primary.active {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .btn-group .btn-outline-secondary.active {
+            background-color: #6c757d;
+            color: white;
         }
     </style>
 </head>
@@ -114,36 +150,119 @@
                         <h5 class="card-title mb-0">Metrics Timeline</h5>
                     </div>
                     <div class="card-body">
-                        <div class="time-range-selector">
-                            <label class="form-label">Time Range:</label>
-                            <div class="btn-group" role="group">
-                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="1">1 Hour</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="6">6 Hours</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm time-range active" data-hours="24">24 Hours</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="72">3 Days</button>
-                            </div>
-                        </div>
-
                         {% if metrics and metrics.gpus %}
                             {% for gpu in metrics.gpus %}
-                                <div class="card gpu-card">
+                                <div class="card gpu-card mb-4">
                                     <div class="card-body">
-                                        <h5 class="card-title">GPU {{ loop.index }} Timeline</h5>
+                                        <h5 class="card-title">GPU {{ loop.index }}: {{ gpu.model }}</h5>
                                         
-                                        <div class="chart-container">
-                                            <canvas id="tempChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        <!-- Controls row -->
+                                        <div class="row mb-3">
+                                            <!-- Time range selector -->
+                                            <div class="col-md-8">
+                                                <label class="form-label">Time Range:</label>
+                                                <div class="btn-group" role="group">
+                                                    <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="1" data-gpu-index="{{ loop.index0 }}">1 Hour</button>
+                                                    <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="6" data-gpu-index="{{ loop.index0 }}">6 Hours</button>
+                                                    <button type="button" class="btn btn-outline-primary btn-sm time-range active" data-hours="24" data-gpu-index="{{ loop.index0 }}">24 Hours</button>
+                                                    <button type="button" class="btn btn-outline-primary btn-sm time-range" data-hours="72" data-gpu-index="{{ loop.index0 }}">3 Days</button>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Metric selector -->
+                                            <div class="col-md-4">
+                                                <label for="metric-select-{{ loop.index0 }}" class="form-label">View Metric:</label>
+                                                <select id="metric-select-{{ loop.index0 }}" class="form-select form-select-sm metric-selector" data-gpu-index="{{ loop.index0 }}">
+                                                    <option value="all">All Metrics</option>
+                                                    <option value="temperature">Temperature</option>
+                                                    <option value="utilization">GPU Utilization</option>
+                                                    <option value="memory_utilization">Memory Utilization</option>
+                                                    <option value="power_usage">Power Usage</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         
-                                        <div class="chart-container">
-                                            <canvas id="utilChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        <!-- Current metrics display -->
+                                        <div class="row mb-3">
+                                            <div class="col-md-3 mb-2">
+                                                <div class="card bg-light">
+                                                    <div class="card-body p-2 text-center">
+                                                        <h5 class="mb-0">{{ gpu.temp }}°C</h5>
+                                                        <small class="text-muted">Temperature</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-2">
+                                                <div class="card bg-light">
+                                                    <div class="card-body p-2 text-center">
+                                                        <h5 class="mb-0">{{ gpu.util }}%</h5>
+                                                        <small class="text-muted">GPU Usage</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-2">
+                                                <div class="card bg-light">
+                                                    <div class="card-body p-2 text-center">
+                                                        <h5 class="mb-0">{{ gpu.memory.percent_used }}%</h5>
+                                                        <small class="text-muted">Memory Usage</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-2">
+                                                <div class="card bg-light">
+                                                    <div class="card-body p-2 text-center">
+                                                        <h5 class="mb-0">{{ gpu.power_usage|default('N/A') }} W</h5>
+                                                        <small class="text-muted">Power Usage</small>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         
-                                        <div class="chart-container">
-                                            <canvas id="memChart{{ loop.index0 }}" class="metrics-chart"></canvas>
-                                        </div>
-                                        
-                                        <div class="chart-container">
-                                            <canvas id="powerChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                        <!-- Charts container -->
+                                        <div class="metric-charts-container">
+                                            <!-- All metrics view -->
+                                            <div id="all-metrics-{{ loop.index0 }}" class="metric-view">
+                                                <div class="chart-container mb-3">
+                                                    <canvas id="tempChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                                </div>
+                                                
+                                                <div class="chart-container mb-3">
+                                                    <canvas id="utilChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                                </div>
+                                                
+                                                <div class="chart-container mb-3">
+                                                    <canvas id="memChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                                </div>
+                                                
+                                                <div class="chart-container mb-3">
+                                                    <canvas id="powerChart{{ loop.index0 }}" class="metrics-chart"></canvas>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Single metric views -->
+                                            <div id="temperature-view-{{ loop.index0 }}" class="metric-view d-none">
+                                                <div class="chart-container" style="height: 400px;">
+                                                    <canvas id="singleTempChart{{ loop.index0 }}"></canvas>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="utilization-view-{{ loop.index0 }}" class="metric-view d-none">
+                                                <div class="chart-container" style="height: 400px;">
+                                                    <canvas id="singleUtilChart{{ loop.index0 }}"></canvas>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="memory_utilization-view-{{ loop.index0 }}" class="metric-view d-none">
+                                                <div class="chart-container" style="height: 400px;">
+                                                    <canvas id="singleMemChart{{ loop.index0 }}"></canvas>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="power_usage-view-{{ loop.index0 }}" class="metric-view d-none">
+                                                <div class="chart-container" style="height: 400px;">
+                                                    <canvas id="singlePowerChart{{ loop.index0 }}"></canvas>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -618,6 +737,213 @@
             }
         }
         
+        // Function to update a single metric chart with detailed view
+        function updateSingleMetricChart(gpuIndex, metricType, hours) {
+            console.log(`Updating single metric chart for GPU ${gpuIndex}, metric: ${metricType}, hours: ${hours}`);
+            
+            // Get the worker ID from the page
+            const workerId = '{{ worker.worker_id }}';
+            
+            // Fetch the data
+            fetch(`/api/metrics/history/${workerId}/${gpuIndex}?hours=${hours}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.timestamps && data.timestamps.length > 0) {
+                        const timestamps = data.timestamps.map(ts => new Date(ts));
+                        let chartData, chartLabel, chartColor, chartBorderColor;
+                        
+                        // Set up chart parameters based on metric type
+                        switch(metricType) {
+                            case 'temperature':
+                                chartData = data.temperature;
+                                chartLabel = 'Temperature (°C)';
+                                chartColor = 'rgba(255, 99, 132, 0.5)';
+                                chartBorderColor = 'rgba(255, 99, 132, 1)';
+                                break;
+                            case 'utilization':
+                                chartData = data.utilization;
+                                chartLabel = 'GPU Utilization (%)';
+                                chartColor = 'rgba(54, 162, 235, 0.5)';
+                                chartBorderColor = 'rgba(54, 162, 235, 1)';
+                                break;
+                            case 'memory_utilization':
+                                chartData = data.memory_utilization;
+                                chartLabel = 'Memory Utilization (%)';
+                                chartColor = 'rgba(75, 192, 192, 0.5)';
+                                chartBorderColor = 'rgba(75, 192, 192, 1)';
+                                break;
+                            case 'power_usage':
+                                chartData = data.power_usage;
+                                chartLabel = 'Power Usage (W)';
+                                chartColor = 'rgba(153, 102, 255, 0.5)';
+                                chartBorderColor = 'rgba(153, 102, 255, 1)';
+                                break;
+                        }
+                        
+                        // Update the single metric chart
+                        const chartId = `single${metricType.charAt(0).toUpperCase() + metricType.slice(1).replace('_', '')}Chart${gpuIndex}`;
+                        updateDetailedChart(
+                            chartId,
+                            timestamps,
+                            chartData,
+                            chartLabel,
+                            chartColor,
+                            chartBorderColor
+                        );
+                    }
+                })
+                .catch(error => {
+                    console.error(`Error loading single metric data for GPU ${gpuIndex}:`, error);
+                });
+        }
+        
+        // Function to create or update a detailed chart for single metric view
+        function updateDetailedChart(chartId, labels, data, label, backgroundColor, borderColor) {
+            const ctx = document.getElementById(chartId);
+            if (!ctx) {
+                console.error(`Canvas element with ID ${chartId} not found`);
+                return;
+            }
+            
+            console.log(`Updating detailed chart ${chartId} with ${labels.length} data points`);
+            
+            // Process data to handle null values
+            const processedData = data.map((value, index) => {
+                return value !== null ? value : null;
+            });
+            
+            // Chart configuration with more detailed options
+            const chartConfig = {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: processedData,
+                        backgroundColor: backgroundColor,
+                        borderColor: borderColor,
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: labels.length > 100 ? 0 : 2,
+                        pointHoverRadius: 5,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 500
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: labels.length > 100 ? 'hour' : 'minute',
+                                displayFormats: {
+                                    hour: 'MMM d, HH:mm',
+                                    minute: 'HH:mm'
+                                },
+                                tooltipFormat: 'MMM d, HH:mm:ss'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                maxTicksLimit: 10,
+                                source: 'auto',
+                                autoSkip: true
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: label,
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (label.includes('Temperature')) {
+                                        return value + '°C';
+                                    } else if (label.includes('Utilization') || label.includes('Memory')) {
+                                        return value + '%';
+                                    } else if (label.includes('Power')) {
+                                        return value + 'W';
+                                    }
+                                    return value;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: label + ' History',
+                            font: {
+                                size: 18,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 20
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let value = context.parsed.y;
+                                    if (label.includes('Temperature')) {
+                                        return `${value.toFixed(1)}°C`;
+                                    } else if (label.includes('Utilization') || label.includes('Memory')) {
+                                        return `${value.toFixed(1)}%`;
+                                    } else if (label.includes('Power')) {
+                                        return `${value.toFixed(1)}W`;
+                                    }
+                                    return value.toFixed(1);
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            };
+            
+            // If chart with this ID already exists, destroy it
+            if (window[chartId]) {
+                window[chartId].destroy();
+            }
+            
+            // Create new chart
+            try {
+                window[chartId] = new Chart(ctx, chartConfig);
+                console.log(`Detailed chart ${chartId} created successfully`);
+            } catch (error) {
+                console.error(`Error creating detailed chart ${chartId}:`, error);
+                const context = ctx.getContext('2d');
+                context.clearRect(0, 0, ctx.width || ctx.clientWidth, ctx.height || ctx.clientHeight);
+                context.font = '14px Arial';
+                context.fillStyle = 'red';
+                context.textAlign = 'center';
+                context.fillText('Error creating chart. Check console for details.', 
+                                 (ctx.width || ctx.clientWidth) / 2, 
+                                 (ctx.height || ctx.clientHeight) / 2);
+            }
+        }
+        
         // Initialize charts and set up event handlers
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, initializing GPU metrics timeline...');
@@ -636,20 +962,48 @@
                     e.preventDefault();
                     console.log(`Time range button clicked: ${this.getAttribute('data-hours')} hours`);
                     
-                    // Update active button styling
-                    timeRangeButtons.forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
+                    // Get GPU index if available
+                    const gpuIndex = this.getAttribute('data-gpu-index');
+                    
+                    // Update active button styling for buttons in the same group
+                    const buttonGroup = this.closest('.btn-group');
+                    if (buttonGroup) {
+                        buttonGroup.querySelectorAll('.time-range').forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+                    } else {
+                        // Fallback to updating all buttons
+                        timeRangeButtons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+                    }
                     
                     // Get new time range
                     const hours = parseInt(this.getAttribute('data-hours'));
                     
-                    // Reload data for all GPUs with new time range
-                    {% if metrics and metrics.gpus %}
-                        {% for gpu in metrics.gpus %}
-                            console.log(`Reloading data for GPU {{ loop.index0 }} with ${hours} hour timeframe`);
-                            loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
-                        {% endfor %}
-                    {% endif %}
+                    // If GPU index is specified, only reload data for that GPU
+                    if (gpuIndex) {
+                        console.log(`Reloading data for specific GPU ${gpuIndex} with ${hours} hour timeframe`);
+                        loadMetricsData('{{ worker.worker_id }}', gpuIndex, hours);
+                        
+                        // If a single metric view is active, update that too
+                        const metricSelector = document.getElementById(`metric-select-${gpuIndex}`);
+                        if (metricSelector && metricSelector.value !== 'all') {
+                            updateSingleMetricChart(gpuIndex, metricSelector.value, hours);
+                        }
+                    } else {
+                        // Reload data for all GPUs with new time range
+                        {% if metrics and metrics.gpus %}
+                            {% for gpu in metrics.gpus %}
+                                console.log(`Reloading data for GPU {{ loop.index0 }} with ${hours} hour timeframe`);
+                                loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
+                                
+                                // Check if single metric view is active
+                                const metricSelector = document.getElementById(`metric-select-{{ loop.index0 }}`);
+                                if (metricSelector && metricSelector.value !== 'all') {
+                                    updateSingleMetricChart({{ loop.index0 }}, metricSelector.value, hours);
+                                }
+                            {% endfor %}
+                        {% endif %}
+                    }
                 });
             });
             
@@ -660,6 +1014,40 @@
                     defaultButton.classList.add('active');
                 }
             }
+            
+            // Set up metric selectors
+            document.querySelectorAll('.metric-selector').forEach(selector => {
+                selector.addEventListener('change', function() {
+                    const gpuIndex = this.getAttribute('data-gpu-index');
+                    const selectedMetric = this.value;
+                    
+                    console.log(`Metric selector changed for GPU ${gpuIndex}: ${selectedMetric}`);
+                    
+                    // Hide all metric views for this GPU
+                    document.querySelectorAll(`[id$="-view-${gpuIndex}"]`).forEach(view => {
+                        view.classList.add('d-none');
+                    });
+                    
+                    if (selectedMetric === 'all') {
+                        // Show all metrics view
+                        document.getElementById(`all-metrics-${gpuIndex}`).classList.remove('d-none');
+                    } else {
+                        // Show selected metric view
+                        const metricView = document.getElementById(`${selectedMetric}-view-${gpuIndex}`);
+                        if (metricView) {
+                            metricView.classList.remove('d-none');
+                            
+                            // Get current time range
+                            const activeButton = document.querySelector(`.time-range[data-gpu-index="${gpuIndex}"].active`) || 
+                                               document.querySelector(`.time-range.active`);
+                            const hours = activeButton ? parseInt(activeButton.getAttribute('data-hours')) : 24;
+                            
+                            // Load data and update single metric chart
+                            updateSingleMetricChart(gpuIndex, selectedMetric, hours);
+                        }
+                    }
+                });
+            });
             
             // Initial load of metrics data for all GPUs
             {% if metrics and metrics.gpus %}
