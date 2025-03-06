@@ -94,7 +94,10 @@
                                                 {% endif %}
                                             {% endfor %}
                                             
+                                            {% set model_count = namespace(value=0) %}
                                             {% for model, count in unique_models.items() %}
+                                                {% set model_count.value = model_count.value + 1 %}
+                                                {% if model_count.value <= 2 %}
                                                 <div>
                                                     <span title="{{ gpus[loop.index0]['model'] }}">{{ model }}</span>
                                                     <span class="text-muted">({{ (gpus[loop.index0]['memory']['total'] / 1024)|round|int }}GB)</span>
@@ -102,11 +105,9 @@
                                                         <span class="badge bg-secondary">×{{ count }}</span>
                                                     {% endif %}
                                                 </div>
-                                                {% if loop.index < 3 and not loop.last %}
-                                                    {% if loop.index == 2 and unique_models|length > 3 %}
-                                                        <div><span class="badge bg-secondary">+{{ unique_models|length - 2 }} more types</span></div>
-                                                        {% break %}
-                                                    {% endif %}
+                                                {% endif %}
+                                                {% if model_count.value == 2 and unique_models|length > 2 %}
+                                                    <div><span class="badge bg-secondary">+{{ unique_models|length - 2 }} more types</span></div>
                                                 {% endif %}
                                             {% endfor %}
                                         {% else %}
