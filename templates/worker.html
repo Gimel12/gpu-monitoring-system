@@ -946,7 +946,7 @@
         
         // Initialize charts and set up event handlers
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing GPU metrics timeline...');
+            console.log('DOM loaded, initializing GPU metrics timeline and power limits...');
             
             // Fix for time range buttons - ensure 24 hours is selected by default
             const timeRangeButtons = document.querySelectorAll('.time-range');
@@ -1059,6 +1059,12 @@
                     console.log(`Initial load of metrics for GPU {{ loop.index0 }} with ${hours} hour timeframe`);
                     loadMetricsData('{{ worker.worker_id }}', {{ loop.index0 }}, hours);
                 {% endfor %}
+                
+                // Load initial power limits data
+                console.log('Loading initial power limits data');
+                setTimeout(() => {
+                    loadPowerLimits('{{ worker.worker_id }}');
+                }, 1500);
             {% endif %}
         });
         
@@ -1080,12 +1086,16 @@
         // GPU Overclocking functionality
         document.addEventListener('DOMContentLoaded', function() {
             // Load power limits on page load
-            loadPowerLimits('{{ worker.worker_id }}');
+            console.log('Initializing power limits on page load');
+            setTimeout(() => {
+                loadPowerLimits('{{ worker.worker_id }}');
+            }, 1000); // Slight delay to ensure DOM is fully loaded
             
             // Refresh power limits button
             const refreshButton = document.getElementById('refresh-power-limits');
             if (refreshButton) {
                 refreshButton.addEventListener('click', function() {
+                    console.log('Refresh power limits button clicked');
                     loadPowerLimits('{{ worker.worker_id }}');
                 });
             }
@@ -1099,37 +1109,61 @@
                     const gpuIndex = formData.get('gpu_index');
                     const powerLimit = formData.get('power_limit');
                     
+                    if (!powerLimit) {
+                        alert('Please enter a power limit value');
+                        return;
+                    }
+                    
+                    console.log(`Submitting power limit ${powerLimit}W for GPU ${gpuIndex}`);
+                    
                     // Show loading state
                     const statusDiv = document.getElementById(`tdp-status-${gpuIndex}`);
-                    statusDiv.className = 'alert alert-info';
-                    statusDiv.textContent = `Setting power limit to ${powerLimit}W...`;
-                    statusDiv.classList.remove('d-none');
+                    if (statusDiv) {
+                        statusDiv.className = 'alert alert-info';
+                        statusDiv.textContent = `Setting power limit to ${powerLimit}W...`;
+                        statusDiv.classList.remove('d-none');
+                    }
+                    
+                    console.log(`Submitting power limit request for GPU ${gpuIndex}: ${powerLimit}W`);
                     
                     // Send request to set TDP
                     fetch('/api/gpu/set_tdp', {
                         method: 'POST',
                         body: formData
                     })
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
                         console.log('TDP set response:', data);
                         if (data.status === 'success') {
-                            statusDiv.className = 'alert alert-success';
-                            statusDiv.textContent = data.message;
+                            if (statusDiv) {
+                                statusDiv.className = 'alert alert-success';
+                                statusDiv.textContent = data.message || 'Power limit set successfully';
+                            }
                             
                             // Refresh power limits after a delay to show the new values
+                            console.log('Power limit set successfully, will refresh limits in 3 seconds');
                             setTimeout(() => {
                                 loadPowerLimits('{{ worker.worker_id }}');
                             }, 3000);
                         } else {
-                            statusDiv.className = 'alert alert-danger';
-                            statusDiv.textContent = `Error: ${data.message}`;
+                            if (statusDiv) {
+                                statusDiv.className = 'alert alert-danger';
+                                statusDiv.textContent = `Error: ${data.message || 'Failed to set power limit'}`;
+                            }
+                            console.error('Error response from server:', data);
                         }
                     })
                     .catch(error => {
                         console.error('Error setting TDP:', error);
-                        statusDiv.className = 'alert alert-danger';
-                        statusDiv.textContent = `Error: ${error.message}`;
+                        if (statusDiv) {
+                            statusDiv.className = 'alert alert-danger';
+                            statusDiv.textContent = `Error: ${error.message || 'Network error when setting power limit'}`;
+                        }
                     });
                 });
             });
@@ -1145,52 +1179,83 @@
                 loadingDiv.classList.remove('d-none');
                 dataDiv.classList.add('d-none');
                 
+                console.log('Requesting power limits for worker:', workerId);
+                
                 // Request power limits
                 fetch(`/api/gpu/get_power_limits?worker_id=${workerId}`)
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
-                        console.log('Power limits request:', data);
-                        if (data.status === 'success') {
+                        console.log('Power limits request response:', data);
+                        if (data.status === 'success' && data.command_id) {
                             // Wait for the command to complete and then check its output
-                            checkPowerLimitsCommand(data.command_id);
+                            setTimeout(() => {
+                                checkPowerLimitsCommand(data.command_id);
+                            }, 500); // Short delay to allow command to start executing
                         } else {
-                            showPowerLimitsError(data.message);
+                            showPowerLimitsError(data.message || 'Failed to get power limits');
                         }
                     })
                     .catch(error => {
                         console.error('Error requesting power limits:', error);
-                        showPowerLimitsError(error.message);
+                        showPowerLimitsError(error.message || 'Network error when requesting power limits');
                     });
             }
         }
         
         // Function to check the power limits command output
         function checkPowerLimitsCommand(commandId) {
+            console.log('Checking power limits command status:', commandId);
             fetch(`/command_output/${commandId}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Command status:', data);
                     if (data.status === 'completed') {
                         // Parse the command output to get power limits
-                        parsePowerLimitsOutput(data.output);
+                        if (data.output && data.output.trim() !== '') {
+                            parsePowerLimitsOutput(data.output);
+                        } else {
+                            showPowerLimitsError('No output received from command. Please try refreshing.');
+                        }
                     } else if (data.status === 'running' || data.status === 'pending') {
                         // Command still running, check again after a delay
+                        console.log('Command still running, checking again in 1 second...');
                         setTimeout(() => {
                             checkPowerLimitsCommand(commandId);
                         }, 1000);
-                    } else {
+                    } else if (data.status === 'failed') {
                         // Command failed
-                        showPowerLimitsError(`Command failed: ${data.status}`);
-                    }
+                        showPowerLimitsError(`Command failed to execute. The worker might not have GPU overclocking capabilities.`);
+                    } else {
+                        // Other status
+                        showPowerLimitsError(`Command status: ${data.status}. Please try refreshing.`);
                 })
                 .catch(error => {
                     console.error('Error checking power limits command:', error);
-                    showPowerLimitsError(error.message);
+                    showPowerLimitsError(error.message || 'Network error when checking command status');
                 });
         }
         
         // Function to parse the power limits command output
         function parsePowerLimitsOutput(output) {
             try {
+                console.log('Parsing power limits output:', output);
+                
+                // Handle empty or invalid output
+                if (!output || output.trim() === '') {
+                    showPowerLimitsError('No power limits data received from the server');
+                    return;
+                }
+                
                 const lines = output.trim().split('\n');
                 const powerLimitsData = document.getElementById('power-limits-data');
                 const loadingDiv = document.getElementById('power-limits-loading');
@@ -1211,18 +1276,33 @@
                             <tbody>
                     `;
                     
+                    let foundValidData = false;
+                    
                     lines.forEach(line => {
+                        // Skip empty lines
+                        if (!line.trim()) return;
+                        
+                        console.log('Processing line:', line);
                         const parts = line.split(',').map(part => part.trim());
+                        
+                        // Check if we have all the required parts
                         if (parts.length >= 5) {
+                            foundValidData = true;
                             const [index, currentLimit, defaultLimit, minLimit, maxLimit] = parts;
+                            
+                            // Convert values to numbers and format them
+                            const currentLimitNum = parseFloat(currentLimit) || 0;
+                            const defaultLimitNum = parseFloat(defaultLimit) || 0;
+                            const minLimitNum = parseFloat(minLimit) || 0;
+                            const maxLimitNum = parseFloat(maxLimit) || 0;
                             
                             html += `
                                 <tr>
                                     <td>${index}</td>
-                                    <td>${currentLimit}</td>
-                                    <td>${defaultLimit}</td>
-                                    <td>${minLimit}</td>
-                                    <td>${maxLimit}</td>
+                                    <td>${currentLimitNum.toFixed(1)}</td>
+                                    <td>${defaultLimitNum.toFixed(1)}</td>
+                                    <td>${minLimitNum.toFixed(1)}</td>
+                                    <td>${maxLimitNum.toFixed(1)}</td>
                                 </tr>
                             `;
                             
@@ -1230,14 +1310,16 @@
                             const currentSpan = document.querySelector(`.current-power-limit[data-gpu-index="${index}"]`);
                             const maxSpan = document.querySelector(`.max-power-limit[data-gpu-index="${index}"]`);
                             
-                            if (currentSpan) currentSpan.textContent = `${currentLimit}W`;
-                            if (maxSpan) maxSpan.textContent = `${maxLimit}W`;
+                            if (currentSpan) currentSpan.textContent = `${currentLimitNum.toFixed(1)}W`;
+                            if (maxSpan) maxSpan.textContent = `${maxLimitNum.toFixed(1)}W`;
                             
                             // Update the power limit input field with the current value as placeholder
                             const inputField = document.getElementById(`power-limit-${index}`);
                             if (inputField) {
-                                inputField.placeholder = currentLimit;
-                                inputField.max = maxLimit;
+                                inputField.placeholder = currentLimitNum.toFixed(0);
+                                inputField.min = minLimitNum;
+                                inputField.max = maxLimitNum;
+                                inputField.value = ''; // Clear any previous value
                             }
                         }
                     });
@@ -1247,16 +1329,20 @@
                         </table>
                     `;
                     
-                    // Update the UI
-                    powerLimitsData.innerHTML = html;
-                    powerLimitsData.classList.remove('d-none');
-                    loadingDiv.classList.add('d-none');
+                    if (foundValidData) {
+                        // Update the UI
+                        powerLimitsData.innerHTML = html;
+                        powerLimitsData.classList.remove('d-none');
+                        loadingDiv.classList.add('d-none');
+                    } else {
+                        showPowerLimitsError('Could not parse power limits data. Format not recognized.');
+                    }
                 } else {
                     showPowerLimitsError('No power limits data available');
                 }
             } catch (error) {
                 console.error('Error parsing power limits output:', error);
-                showPowerLimitsError(error.message);
+                showPowerLimitsError(error.message || 'Error parsing power limits data');
             }
         }
         

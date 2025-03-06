@@ -351,11 +351,20 @@ def set_gpu_tdp():
         if not worker:
             return jsonify({'status': 'error', 'message': 'Worker not found'}), 404
         
+        # Check if worker was seen recently (within last 5 minutes)
+        five_minutes_ago = datetime.utcnow() - timedelta(minutes=5)
+        if worker.last_seen < five_minutes_ago:
+            return jsonify({
+                'status': 'error', 
+                'message': 'Worker appears to be offline. Last seen: ' + worker.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC')
+            }), 400
+            
         # Create the command to set TDP
         # First enable persistence mode if not already enabled
         persistence_cmd = Command(
             worker_id=worker.id, 
-            command_text=f"nvidia-smi -pm 1"
+            command_text=f"nvidia-smi -pm 1",
+            status='pending'
         )
         db.session.add(persistence_cmd)
         db.session.commit()
@@ -363,7 +372,8 @@ def set_gpu_tdp():
         # Then set the power limit
         tdp_cmd = Command(
             worker_id=worker.id, 
-            command_text=f"nvidia-smi -i {gpu_index} -pl {power_limit}"
+            command_text=f"nvidia-smi -i {gpu_index} -pl {power_limit}",
+            status='pending'
         )
         db.session.add(tdp_cmd)
         db.session.commit()
@@ -391,6 +401,14 @@ def get_gpu_power_limits():
         worker = Worker.query.filter_by(worker_id=worker_id).first()
         if not worker:
             return jsonify({'status': 'error', 'message': 'Worker not found'}), 404
+        
+        # Check if worker was seen recently (within last 5 minutes)
+        five_minutes_ago = datetime.utcnow() - timedelta(minutes=5)
+        if worker.last_seen < five_minutes_ago:
+            return jsonify({
+                'status': 'error', 
+                'message': 'Worker appears to be offline. Last seen: ' + worker.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC')
+            }), 400
         
         # Create command to get power limits
         cmd = Command(
